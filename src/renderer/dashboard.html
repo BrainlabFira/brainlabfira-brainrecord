@@ -212,32 +212,70 @@
     .btn-confirm:hover { background: rgba(239, 68, 68, 0.32); color: #fff; }
 
     /* ── Cuerpo en dos columnas ── */
-    .body {
-      flex: 1;
-      display: grid;
-      grid-template-columns: 1fr 292px;
-      gap: 18px;
-      padding: 18px;
-      min-height: 0;
-      overflow: hidden;
+    /* ── Pestañas ── */
+    .tabs {
+      display: flex;
+      gap: 3px;
+      padding: 9px 18px 0;
+      flex-shrink: 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      -webkit-app-region: drag;   /* el hueco entre pestañas sigue arrastrando */
     }
 
-    /* Cada columna scrollea por su cuenta. Antes el grid recortaba lo que no
-       cabía (los atajos quedaban cortados por abajo) porque .body tenía
-       overflow:hidden y las columnas no tenían scroll propio. */
-    .col {
-      display: flex; flex-direction: column; gap: 14px;
+    .tab {
+      -webkit-app-region: no-drag;
+      display: flex; align-items: center; gap: 7px;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: rgba(255, 255, 255, 0.42);
+      font-family: inherit;
+      font-size: 12.5px;
+      font-weight: 500;
+      padding: 9px 14px 10px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+      margin-bottom: -1px;
+    }
+    .tab:hover { color: rgba(255, 255, 255, 0.75); }
+    .tab.active { color: #fff; border-bottom-color: rgba(255, 255, 255, 0.85); }
+    .tab svg { width: 14px; height: 14px; opacity: 0.8; flex-shrink: 0; }
+
+    /* Un único scroll: el del contenido de la pestaña activa. Antes scrolleaba
+       cada columna por su cuenta, que quedaba raro y cortaba paneles. */
+    .body {
+      flex: 1;
       min-height: 0;
       overflow-y: auto;
-      padding-right: 4px;   /* hueco para la barra, que no tape el contenido */
+      overflow-x: hidden;
+      padding: 18px;
     }
-    .col::-webkit-scrollbar { width: 7px; }
-    .col::-webkit-scrollbar-track { background: transparent; }
-    .col::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.12);
-      border-radius: 4px;
+    .body::-webkit-scrollbar { width: 9px; }
+    .body::-webkit-scrollbar-track { background: transparent; }
+    .body::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.14);
+      border-radius: 5px;
+      border: 2px solid transparent;
+      background-clip: content-box;
     }
-    .col::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.22); }
+    .body::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.26);
+      background-clip: content-box;
+    }
+
+    .tabpanel { display: none; flex-direction: column; gap: 14px; }
+    .tabpanel.active { display: flex; }
+
+    /* Grabación ocupa todo el ancho; subida e historial van debajo, a dos columnas. */
+    .hero { padding: 20px 22px; }
+    .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+
+    .panel-intro {
+      font-size: 11.5px;
+      line-height: 1.5;
+      color: rgba(255, 255, 255, 0.4);
+      margin: -6px 0 14px;
+    }
 
     .panel {
       background: rgba(255, 255, 255, 0.035);
@@ -259,7 +297,7 @@
     }
 
     /* ── Bloque de grabación ── */
-    .rec-state { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .rec-state { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
     .rec-dot {
       width: 12px; height: 12px; border-radius: 50%;
       background: rgba(255, 255, 255, 0.22);
@@ -272,16 +310,17 @@
       100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
     }
     .rec-text { flex: 1; }
-    .rec-text .label { font-size: 14px; font-weight: 600; }
+    .rec-text .label { font-size: 17px; font-weight: 600; }
     .rec-text .sub {
-      font-size: 11.5px; color: rgba(255, 255, 255, 0.42); margin-top: 2px;
+      font-size: 12px; color: rgba(255, 255, 255, 0.42); margin-top: 3px;
     }
     .rec-time {
-      font-size: 26px; font-weight: 600;
+      font-size: 34px; font-weight: 600;
       font-variant-numeric: tabular-nums;
       letter-spacing: 1px;
       color: rgba(255, 255, 255, 0.92);
     }
+    .rec-dot { width: 13px; height: 13px; }
 
     button.action {
       width: 100%;
@@ -415,29 +454,6 @@
       vertical-align: 1px;
     }
 
-    /* ── Bloque avanzado ── */
-    .advanced-toggle {
-      -webkit-app-region: no-drag;
-      width: 100%;
-      display: flex; align-items: center; gap: 6px;
-      background: transparent; border: none;
-      color: rgba(255, 255, 255, 0.45);
-      font-size: 11px; font-family: inherit;
-      cursor: pointer;
-      padding: 9px 0 4px;
-      transition: color 0.15s;
-    }
-    .advanced-toggle:hover { color: rgba(255, 255, 255, 0.75); }
-    .advanced-toggle .chev {
-      display: inline-block;
-      transition: transform 0.18s;
-      font-size: 9px;
-    }
-    .advanced-toggle.open .chev { transform: rotate(90deg); }
-
-    .advanced { display: none; }
-    .advanced.open { display: block; }
-
     /* Explicación del valor elegido: cambia al mover el desplegable, para que
        "24 fps" signifique algo sin tener que saber de vídeo. */
     .help {
@@ -509,6 +525,14 @@
     }
 
     /* ── Historial ── */
+    /* El historial crece con la sesión; a partir de cierto punto scrollea
+       dentro de su panel en vez de estirar la vista entera. */
+    #history { max-height: 168px; overflow-y: auto; }
+    #history::-webkit-scrollbar { width: 5px; }
+    #history::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12); border-radius: 3px;
+    }
+
     .history-item {
       display: flex; align-items: center; gap: 10px;
       padding: 9px 0;
@@ -625,11 +649,35 @@
       <button class="close-btn" id="closeBtn" title="Cerrar (sigue en la bandeja)">&#10005;</button>
     </div>
 
+    <!-- Pestañas: cada vista cabe entera, sin que grabación, ajustes y atajos
+         se peleen por el alto de la ventana. -->
+    <div class="tabs">
+      <button class="tab active" data-tab="rec">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5" fill="currentColor" stroke="none"/>
+        </svg>
+        Grabación
+      </button>
+      <button class="tab" data-tab="quality">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/>
+          <path d="M1 14h6M9 8h6M17 16h6"/>
+        </svg>
+        Calidad
+      </button>
+      <button class="tab" data-tab="shortcuts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <rect x="2" y="6" width="20" height="12" rx="2"/>
+          <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/>
+        </svg>
+        Atajos
+      </button>
+    </div>
+
     <div class="body">
-      <!-- Columna izquierda -->
-      <div class="col">
-        <div class="panel">
-          <h2>Grabación</h2>
+      <!-- ── TAB: Grabación ── -->
+      <div class="tabpanel active" data-panel="rec">
+        <div class="panel hero">
           <div class="rec-state">
             <div class="rec-dot"></div>
             <div class="rec-text">
@@ -642,35 +690,35 @@
           <div class="hint">o pulsa <strong id="recHint">Ctrl + Alt + R</strong> desde cualquier aplicación</div>
         </div>
 
-        <div class="panel">
-          <h2>Estado de subida</h2>
-          <div class="upload-row">
-            <div class="upload-dot" id="uploadDot"></div>
-            <span id="uploadLabel">Todo subido</span>
-          </div>
-          <div class="upload-detail" id="uploadDetail">Sin fragmentos pendientes</div>
-          <div class="audio-row">
-            <span class="cap">Audio</span>
-            <div class="vu" id="vu">
-              <span></span><span></span><span></span><span></span>
-              <span></span><span></span><span></span><span></span>
+        <div class="duo">
+          <div class="panel">
+            <h2>Estado de subida</h2>
+            <div class="upload-row">
+              <div class="upload-dot" id="uploadDot"></div>
+              <span id="uploadLabel">Todo subido</span>
+            </div>
+            <div class="upload-detail" id="uploadDetail">Sin fragmentos pendientes</div>
+            <div class="audio-row">
+              <span class="cap">Audio</span>
+              <div class="vu" id="vu">
+                <span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div class="panel scroll">
-          <h2>Grabaciones de esta sesión</h2>
-          <div id="history"><div class="empty">Aún no has grabado nada</div></div>
+          <div class="panel">
+            <h2>Grabaciones de esta sesión</h2>
+            <div id="history"><div class="empty">Aún no has grabado nada</div></div>
+          </div>
         </div>
       </div>
 
-      <!-- Columna derecha -->
-      <div class="col">
+      <!-- ── TAB: Calidad ── -->
+      <div class="tabpanel" data-panel="quality">
         <div class="panel">
-          <h2>Calidad</h2>
+          <h2>Perfil de calidad</h2>
 
-          <!-- Perfiles: tres combinaciones que sabemos que funcionan bien.
-               Quien quiera afinar abre "Avanzado". -->
           <div class="profiles" id="profiles">
             <label class="profile">
               <input type="radio" name="profile" value="light" />
@@ -708,72 +756,78 @@
           </div>
 
           <div class="screen-note" id="screenNote"></div>
+        </div>
 
-          <div class="setting" style="margin-top: 4px;">
+        <div class="panel">
+          <h2>Audio</h2>
+          <div class="setting">
             <div>
               <div class="name">Audio del sistema</div>
               <div class="desc">Graba lo que suena por los altavoces</div>
             </div>
             <div class="toggle on" id="audioToggle"></div>
           </div>
+        </div>
 
-          <!-- Avanzado: los controles sueltos, plegados por defecto. -->
-          <button class="advanced-toggle" id="advancedToggle">
-            <span class="chev">&#9656;</span> Ajustes avanzados
-          </button>
+        <div class="panel">
+          <h2>Ajustes avanzados</h2>
 
-          <div class="advanced" id="advanced">
-            <div class="setting">
-              <div>
-                <div class="name">Fotogramas</div>
-                <div class="desc">Fluidez de la imagen</div>
-              </div>
-              <select id="fps">
-                <option value="1">1 fps</option>
-                <option value="3">3 fps</option>
-                <option value="5">5 fps</option>
-                <option value="10">10 fps</option>
-                <option value="15">15 fps</option>
-                <option value="24">24 fps</option>
-                <option value="30">30 fps</option>
-              </select>
+          <div class="setting">
+            <div>
+              <div class="name">Fotogramas</div>
+              <div class="desc">Fluidez de la imagen</div>
             </div>
-            <div class="help" id="fpsHelp"></div>
-
-            <div class="setting">
-              <div>
-                <div class="name">Resolución</div>
-                <div class="desc">% de la pantalla</div>
-              </div>
-              <select id="scale">
-                <option value="0.5">50 %</option>
-                <option value="0.75">75 %</option>
-                <option value="1">100 %</option>
-              </select>
-            </div>
-            <div class="help" id="scaleHelp"></div>
-
-            <div class="setting">
-              <div>
-                <div class="name">Compresión</div>
-                <div class="desc">Calidad de imagen</div>
-              </div>
-              <select id="crf">
-                <option value="20">Alta</option>
-                <option value="26">Media</option>
-                <option value="32">Baja</option>
-              </select>
-            </div>
-            <div class="help" id="crfHelp"></div>
+            <select id="fps">
+              <option value="1">1 fps</option>
+              <option value="3">3 fps</option>
+              <option value="5">5 fps</option>
+              <option value="10">10 fps</option>
+              <option value="15">15 fps</option>
+              <option value="24">24 fps</option>
+              <option value="30">30 fps</option>
+            </select>
           </div>
+          <div class="help" id="fpsHelp"></div>
+
+          <div class="setting">
+            <div>
+              <div class="name">Resolución</div>
+              <div class="desc">% de la pantalla</div>
+            </div>
+            <select id="scale">
+              <option value="0.5">50 %</option>
+              <option value="0.75">75 %</option>
+              <option value="1">100 %</option>
+            </select>
+          </div>
+          <div class="help" id="scaleHelp"></div>
+
+          <div class="setting">
+            <div>
+              <div class="name">Compresión</div>
+              <div class="desc">Calidad de imagen</div>
+            </div>
+            <select id="crf">
+              <option value="20">Alta</option>
+              <option value="26">Media</option>
+              <option value="32">Baja</option>
+            </select>
+          </div>
+          <div class="help" id="crfHelp"></div>
 
           <div class="settings-note">
             Los cambios se aplican a la siguiente grabación, no a la que esté en curso.
           </div>
         </div>
+      </div>
 
+      <!-- ── TAB: Atajos ── -->
+      <div class="tabpanel" data-panel="shortcuts">
         <div class="panel">
           <h2>Atajos de teclado</h2>
+          <p class="panel-intro">
+            Funcionan desde cualquier aplicación, sin necesidad de tener esta ventana abierta.
+          </p>
           <div id="shortcuts"></div>
           <div class="shortcut-warn" id="shortcutWarn"></div>
         </div>
@@ -875,11 +929,37 @@
         .join('');
     }
 
+    // ── Pestañas ──
+    // El scroll se reinicia al cambiar de pestaña: si no, al volver a una
+    // vista corta desde otra larga aparecería a medio desplazar.
+    const bodyEl = document.querySelector('.body');
+
+    document.querySelectorAll('.tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        const target = tab.dataset.tab;
+        document.querySelectorAll('.tab').forEach((t) =>
+          t.classList.toggle('active', t === tab));
+        document.querySelectorAll('.tabpanel').forEach((p) =>
+          p.classList.toggle('active', p.dataset.panel === target));
+        bodyEl.scrollTop = 0;
+
+        // Repintar al entrar en Calidad: las etiquetas de carga dependen de la
+        // resolución, que puede no estar lista en el primer render.
+        if (target === 'quality') { annotateProfiles(); updateHelp(); }
+      });
+    });
+
+    function showTab(name) {
+      const tab = document.querySelector(`.tab[data-tab="${name}"]`);
+      if (tab) tab.click();
+    }
+
     // ── Acciones ──
     const overlay = document.getElementById('confirmOverlay');
 
     // Terminar pide confirmación; empezar no (empezar no destruye nada).
     function askStopConfirmation() {
+      showTab('rec');   // el diálogo habla de la grabación: que se vea detrás
       const elapsed = startedAtMs
         ? formatElapsed(Math.floor((Date.now() - startedAtMs) / 1000))
         : '00:00:00';
@@ -1048,8 +1128,8 @@
     const scaleSel = document.getElementById('scale');
     const crfSel = document.getElementById('crf');
     const audioToggle = document.getElementById('audioToggle');
-    const advancedBox = document.getElementById('advanced');
-    const advancedBtn = document.getElementById('advancedToggle');
+    // Ya no hay desplegable "Avanzado": con las pestañas, los ajustes finos
+    // viven en su propio panel dentro de la pestaña Calidad.
 
     // Los tres perfiles. 'balanced' es exactamente la configuración con la que
     // la app venía funcionando, para no cambiar el comportamiento por defecto.
@@ -1218,10 +1298,6 @@
       });
     });
 
-    advancedBtn.addEventListener('click', () => {
-      const open = advancedBox.classList.toggle('open');
-      advancedBtn.classList.toggle('open', open);
-    });
 
     // Los controles sueltos actualizan la ayuda y pueden dejar la selección sin
     // perfil, si la combinación deja de coincidir con ninguno.

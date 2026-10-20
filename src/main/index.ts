@@ -105,7 +105,7 @@ function createLoginWindow(): void {
 function createDashboardWindow(): void {
   dashboardWindow = new BrowserWindow({
     width: 760,
-    height: 700,
+    height: 620,
     show: false,
     frame: false,
     transparent: true,
