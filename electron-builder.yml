@@ -1,0 +1,39 @@
+appId: com.brainlab.brainlabrecord
+productName: Brainlabrecord
+copyright: "Copyright © 2026"
+
+directories:
+  output: release
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: assets/tray-icon.ico
+  requestedExecutionLevel: asInvoker
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: false
+  installerIcon: assets/tray-icon.ico
+  uninstallerIcon: assets/tray-icon.ico
+  createDesktopShortcut: false
+  createStartMenuShortcut: true
+  shortcutName: "Brainlabrecord"
+
+files:
+  - dist/**/*
+  - assets/**/*
+  - node_modules/**/*
+  # ffmpeg va como extraResource (fuera del asar, ejecutable). Excluimos los
+  # binarios de ffmpeg-static del bundle para no duplicar ~80MB dentro del asar.
+  - "!node_modules/ffmpeg-static/ffmpeg"       # Linux binary
+  - "!node_modules/ffmpeg-static/ffmpeg.osx"   # macOS binary
+  - "!node_modules/ffmpeg-static/ffmpeg.exe"   # Windows (ya va en extraResources)
+
+extraResources:
+  - from: node_modules/ffmpeg-static/ffmpeg.exe
+    to: ffmpeg/ffmpeg.exe
+
+publish: null

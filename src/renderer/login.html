@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brainrecord</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: transparent;   /* la ventana es frameless + transparent */
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    /* Contenedor glass a pantalla completa de la ventana */
+    .glass {
+      position: relative;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+      background: rgba(0, 0, 0, 0.85);          /* negro opacidad 0.85 */
+      backdrop-filter: blur(24px) saturate(120%);
+      -webkit-backdrop-filter: blur(24px) saturate(120%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      color: #f5f5f5;
+      -webkit-app-region: drag;                 /* toda la ventana arrastrable */
+    }
+
+    /* Barra superior mínima: solo el botón de cerrar */
+    .titlebar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 0 10px;
+      -webkit-app-region: drag;
+    }
+
+    .close-btn {
+      -webkit-app-region: no-drag;
+      width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      border: none;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.55);
+      font-size: 18px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .close-btn:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+
+    .card {
+      -webkit-app-region: no-drag;   /* los campos deben poder recibir foco/click */
+      width: 100%;
+      max-width: 320px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .logo {
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 20px;
+    }
+    .logo svg { width: 30px; height: 30px; stroke: rgba(255,255,255,0.75); }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      font-size: 12.5px;
+      color: rgba(255, 255, 255, 0.45);
+      margin-bottom: 28px;
+      text-align: center;
+    }
+
+    .field {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+      padding: 8px 2px;
+      margin-bottom: 20px;
+      transition: border-color 0.15s;
+    }
+    .field:focus-within { border-color: rgba(255, 255, 255, 0.7); }
+    .field svg { width: 16px; height: 16px; stroke: rgba(255,255,255,0.5); flex-shrink: 0; }
+
+    input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #f5f5f5;
+      font-size: 14px;
+    }
+    input::placeholder { color: rgba(255, 255, 255, 0.35); }
+
+    button.submit {
+      width: 100%;
+      margin-top: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 10px;
+      color: #fff;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      padding: 12px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    button.submit:hover { background: rgba(255, 255, 255, 0.18); border-color: rgba(255,255,255,0.35); }
+    button.submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .error {
+      width: 100%;
+      background: rgba(220, 38, 38, 0.12);
+      border: 1px solid rgba(220, 38, 38, 0.4);
+      border-radius: 8px;
+      color: #fca5a5;
+      font-size: 12.5px;
+      margin-top: 14px;
+      padding: 9px 12px;
+      display: none;
+      text-align: center;
+    }
+
+    .recording-indicator {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      font-size: 12.5px;
+      color: #4ade80;
+      margin-top: 16px;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      background: #4ade80;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  </style>
+</head>
+<body>
+  <div class="glass">
+    <div class="titlebar">
+      <button class="close-btn" id="closeBtn" title="Cerrar">&#10005;</button>
+    </div>
+
+    <div class="card">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"></circle>
+          <circle cx="12" cy="12" r="3.5" fill="rgba(255,255,255,0.75)" stroke="none"></circle>
+        </svg>
+      </div>
+
+      <h1>BrainlabRecord</h1>
+      <p class="subtitle">Introduce tus credenciales</p>
+
+      <div class="field">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4h16v16H4z"></path><path d="m4 6 8 6 8-6"></path>
+        </svg>
+        <input type="email" id="email" placeholder="Email" autocomplete="username" />
+      </div>
+
+      <div class="field">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path>
+        </svg>
+        <input type="password" id="password" placeholder="Contraseña" autocomplete="current-password" />
+      </div>
+
+      <button class="submit" id="loginBtn">Iniciar sesión</button>
+
+      <div class="error" id="errorMsg"></div>
+
+      <div class="recording-indicator" id="recordingIndicator">
+        <div class="dot"></div>
+        Grabación activa
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+    const { createClient } = require('@supabase/supabase-js');
+
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const loginBtn = document.getElementById('loginBtn');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const errorMsg = document.getElementById('errorMsg');
+    const recordingIndicator = document.getElementById('recordingIndicator');
+
+    // Botón cerrar (la ventana no tiene frame nativo) — oculta la ventana, la app
+    // sigue viva en la bandeja.
+    document.getElementById('closeBtn').addEventListener('click', () => {
+      ipcRenderer.send('window-close');
+    });
+
+    loginBtn.addEventListener('click', async () => {
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+
+      if (!email || !password) {
+        showError('Introduce email y contraseña');
+        return;
+      }
+
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Conectando...';
+      errorMsg.style.display = 'none';
+
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (error || !data.session) {
+        showError(error?.message ?? 'Credenciales incorrectas');
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Iniciar sesión';
+        return;
+      }
+
+      // Look up the numeric user id from public.users using company_email
+      loginBtn.textContent = 'Buscando usuario...';
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('company_email', data.user.email)
+        .single();
+
+      if (userError || !userData) {
+        // Fallback: try personal_email
+        const { data: userData2, error: userError2 } = await supabase
+          .from('users')
+          .select('id')
+          .eq('personal_email', data.user.email)
+          .single();
+
+        if (userError2 || !userData2) {
+          showError('Usuario no encontrado en la base de datos. Contacta con el administrador.');
+          loginBtn.disabled = false;
+          loginBtn.textContent = 'Iniciar sesión';
+          return;
+        }
+
+        ipcRenderer.send('session-ready', {
+          authUserId: data.user.id,
+          numericUserId: userData2.id,
+          email: data.user.email,
+          accessToken: data.session.access_token,
+          refreshToken: data.session.refresh_token,
+        });
+        return;
+      }
+
+      ipcRenderer.send('session-ready', {
+        authUserId: data.user.id,
+        numericUserId: userData.id,
+        email: data.user.email,
+        accessToken: data.session.access_token,
+        refreshToken: data.session.refresh_token,
+      });
+    });
+
+    passwordInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') loginBtn.click();
+    });
+
+    function showError(msg) {
+      errorMsg.textContent = msg;
+      errorMsg.style.display = 'block';
+    }
+
+    // ────────────────────────────────────────────────
+    // Screen capture (desktopCapturer runs in renderer)
+    // ────────────────────────────────────────────────
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let currentChunkPath = null;
+    const fs = require('fs');
+    const path = require('path');
+
+    const dbg = (m) => ipcRenderer.send('capture-debug', m);
+
+    ipcRenderer.on('start-capture', async (_event, { chunkPath, config }) => {
+      currentChunkPath = chunkPath;
+      recordedChunks = [];
+      dbg('start-capture recibido, pidiendo fuentes...');
+
+      try {
+        // desktopCapturer lives in the main process (Electron 17+); ask for sources via IPC
+        const sources = await ipcRenderer.invoke('get-screen-sources');
+        dbg('fuentes recibidas: ' + (sources ? sources.length : 0));
+
+        if (!sources || sources.length === 0) {
+          ipcRenderer.send('capture-error', 'No se encontraron fuentes de pantalla');
+          return;
+        }
+
+        const constraints = {
+          audio: config.captureAudio ? {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+            }
+          } : false,
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: sources[0].id,
+              minWidth: config.width,
+              minHeight: config.height,
+              maxWidth: config.width,
+              maxHeight: config.height,
+              maxFrameRate: config.fps,
+            },
+          },
+        };
+
+        dbg('llamando getUserMedia con sourceId ' + sources[0].id);
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        dbg('stream obtenido, iniciando MediaRecorder');
+
+        // High bitrate so the intermediate webm doesn't blur text before FFmpeg
+        // re-encodes. Scaled to resolution: ~8 Mbps is generous for 5fps screen content.
+        // codecs=vp9,opus → vídeo VP9 + audio Opus (audio del sistema para meetings).
+        mediaRecorder = new MediaRecorder(stream, {
+          mimeType: 'video/webm;codecs=vp9,opus',
+          videoBitsPerSecond: 8_000_000,
+          audioBitsPerSecond: 128_000,
+        });
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          blob.arrayBuffer().then((buffer) => {
+            fs.mkdirSync(path.dirname(currentChunkPath), { recursive: true });
+            fs.writeFileSync(currentChunkPath, Buffer.from(buffer));
+            ipcRenderer.send('capture-saved', currentChunkPath);
+            stream.getTracks().forEach((t) => t.stop());
+          });
+        };
+
+        mediaRecorder.start(1000); // collect data every 1s
+        recordingIndicator.style.display = 'flex';
+      } catch (err) {
+        ipcRenderer.send('capture-error', err.message);
+      }
+    });
+
+    ipcRenderer.on('stop-capture', () => {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        recordingIndicator.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>
