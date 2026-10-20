@@ -122,19 +122,45 @@
     }
     .vu span.on { background: #4ade80; }
 
+    /* Minimizado: el punto es un BOTÓN no-drag. Antes era un div dentro de la
+       barra, que es -webkit-app-region: drag — Windows se tragaba el clic como
+       un arrastre y no había forma de volver a expandir el panel. */
     .mini-dot {
-      width: 14px; height: 14px;
+      -webkit-app-region: no-drag;
+      width: 26px; height: 26px;
+      border: none;
+      padding: 0;
       border-radius: 50%;
       background: #ef4444;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
       animation: pulse 1.6s infinite;
+      transition: transform 0.15s, background 0.15s;
     }
+    .mini-dot:hover { transform: scale(1.12); background: #f87171; }
+    /* Flecha de expandir, visible solo al pasar el ratón: deja claro que el
+       punto se puede pulsar. */
+    .mini-dot svg {
+      width: 12px; height: 12px;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .mini-dot:hover svg { opacity: 1; }
+
     body:not(.mini) .mini-dot { display: none; }
+    /* En modo mini la barra deja un borde fino arrastrable alrededor del punto,
+       para poder seguir moviendo el panel sin perder el clic de expandir. */
+    body.mini .bar { padding: 4px; }
   </style>
 </head>
 <body>
   <div class="bar" id="bar">
-    <!-- Minimizado: solo este punto. -->
-    <div class="mini-dot" id="miniDot" title="Grabando — clic para expandir"></div>
+    <!-- Minimizado: solo este punto, que es un botón real (no-drag). -->
+    <button class="mini-dot" id="miniDot" title="Grabando — clic para volver al panel completo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 18l6-6-6-6"/>
+      </svg>
+    </button>
 
     <div class="rec only-full">
       <div class="rec-dot"></div>
@@ -167,7 +193,7 @@
     const { ipcRenderer } = require('electron');
 
     const EXPANDED = { width: 320, height: 64 };
-    const MINI     = { width: 46,  height: 46 };
+    const MINI     = { width: 58,  height: 58 };
     const AUTOHIDE_MS = 10_000;
 
     const body = document.body;
@@ -251,8 +277,10 @@
     }
 
     // ── Botones ──
+    // No para directamente: pide confirmación. El diálogo lo muestra el
+    // dashboard, que es la ventana con sitio para ello.
     document.getElementById('stopBtn').addEventListener('click', () => {
-      ipcRenderer.invoke('recording:stop');
+      ipcRenderer.send('recording:request-stop');
     });
 
     document.getElementById('miniBtn').addEventListener('click', () => {
@@ -261,8 +289,16 @@
 
     // El punto minimizado es el único control cuando está recogido: clic para
     // volver a la barra completa.
-    document.getElementById('miniDot').addEventListener('click', () => {
+    document.getElementById('miniDot').addEventListener('click', (e) => {
+      e.stopPropagation();
       setMinimized(false);
+    });
+
+    // Salida de emergencia: doble clic en cualquier punto del panel minimizado
+    // lo expande. Si por lo que sea el clic del botón no llega (las ventanas
+    // frameless con regiones drag son delicadas en Windows), esto lo salva.
+    document.addEventListener('dblclick', () => {
+      if (minimized) setMinimized(false);
     });
 
     // ── Estado desde el main ──
@@ -300,6 +336,10 @@
         bar.style.height = `${3 + Math.max(0, Math.min(1, level * 1.3)) * (4 + i * 3)}px`;
       });
     });
+
+    // Ctrl+Alt+P alterna minimizado/expandido en vez de esconder el panel:
+    // mientras se graba el indicador no debería poder desaparecer del todo.
+    ipcRenderer.on('panel:toggle-size', () => { setMinimized(!minimized); });
 
     // Estado inicial al abrirse (el panel se crea ya grabando).
     (async () => {

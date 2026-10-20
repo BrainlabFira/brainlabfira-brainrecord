@@ -63,16 +63,181 @@
     }
     .close-btn:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
 
+    /* ── Cuenta (arriba a la derecha) ── */
+    .account { position: relative; display: flex; align-items: center; gap: 8px; }
+
+    .account-email {
+      font-size: 11.5px;
+      color: rgba(255, 255, 255, 0.5);
+      max-width: 210px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    .avatar {
+      -webkit-app-region: no-drag;
+      width: 28px; height: 28px;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 50%;
+      color: rgba(255, 255, 255, 0.65);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .avatar:hover { background: rgba(255,255,255,0.14); color: #fff; border-color: rgba(255,255,255,0.3); }
+    .avatar.open { background: rgba(255,255,255,0.16); color: #fff; }
+    .avatar svg { width: 14px; height: 14px; }
+
+    .account-menu {
+      -webkit-app-region: no-drag;
+      position: absolute;
+      top: 36px; right: 0;
+      width: 248px;
+      background: rgba(22, 22, 26, 0.97);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 11px;
+      box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+      padding: 6px;
+      z-index: 50;
+      display: none;
+    }
+    .account-menu.open { display: block; }
+
+    .menu-head { padding: 8px 10px 10px; border-bottom: 1px solid rgba(255,255,255,0.07); margin-bottom: 5px; }
+    .menu-email {
+      font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.9);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .menu-sub { font-size: 10.5px; color: rgba(255,255,255,0.35); margin-top: 2px; }
+
+    .menu-item {
+      width: 100%;
+      display: flex; align-items: center; gap: 9px;
+      background: transparent; border: none;
+      color: rgba(255, 255, 255, 0.78);
+      font-family: inherit; font-size: 12px;
+      text-align: left;
+      padding: 8px 10px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: background 0.13s, color 0.13s;
+    }
+    .menu-item:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+    .menu-item svg { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.72; }
+    .menu-item span:not(.menu-badge):not(.menu-check) { flex: 1; }
+    .menu-item.danger { color: rgba(252, 165, 165, 0.85); }
+    .menu-item.danger:hover { background: rgba(239, 68, 68, 0.14); color: #fca5a5; }
+
+    .menu-badge {
+      font-size: 10px; font-weight: 700;
+      background: rgba(255, 255, 255, 0.1);
+      color: rgba(255,255,255,0.6);
+      border-radius: 9px; padding: 1px 7px;
+      font-variant-numeric: tabular-nums;
+    }
+    .menu-badge.active { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+
+    .menu-check { font-size: 11px; color: #4ade80; opacity: 0; }
+    .menu-check.on { opacity: 1; }
+
+    .menu-sep { height: 1px; background: rgba(255,255,255,0.07); margin: 5px 2px; }
+
+    /* ── Diálogo de confirmación ── */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
+      display: none;
+      align-items: center; justify-content: center;
+      z-index: 100;
+      border-radius: 16px;
+    }
+    .overlay.open { display: flex; }
+
+    .dialog {
+      width: 340px;
+      background: rgba(26, 26, 30, 0.98);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
+      padding: 20px;
+      text-align: center;
+    }
+    .dialog .icon {
+      width: 42px; height: 42px;
+      margin: 0 auto 13px;
+      border-radius: 50%;
+      background: rgba(239, 68, 68, 0.14);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .dialog .icon svg { width: 19px; height: 19px; color: #fca5a5; }
+    .dialog h3 { font-size: 15px; font-weight: 600; margin-bottom: 7px; }
+    .dialog p {
+      font-size: 12px; line-height: 1.5;
+      color: rgba(255, 255, 255, 0.5);
+      margin-bottom: 18px;
+    }
+    .dialog .stats {
+      font-size: 11.5px;
+      color: rgba(255,255,255,0.65);
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 9px 12px;
+      margin-bottom: 16px;
+      font-variant-numeric: tabular-nums;
+    }
+    .dialog-actions { display: flex; gap: 9px; }
+    .dialog-actions button {
+      flex: 1;
+      border-radius: 9px;
+      font-family: inherit; font-size: 13px; font-weight: 600;
+      padding: 11px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn-cancel {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.14);
+      color: rgba(255,255,255,0.8);
+    }
+    .btn-cancel:hover { background: rgba(255,255,255,0.14); color: #fff; }
+    .btn-confirm {
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.5);
+      color: #fca5a5;
+    }
+    .btn-confirm:hover { background: rgba(239, 68, 68, 0.32); color: #fff; }
+
     /* ── Cuerpo en dos columnas ── */
     .body {
       flex: 1;
       display: grid;
-      grid-template-columns: 1fr 272px;
+      grid-template-columns: 1fr 292px;
       gap: 18px;
       padding: 18px;
+      min-height: 0;
       overflow: hidden;
     }
-    .col { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+
+    /* Cada columna scrollea por su cuenta. Antes el grid recortaba lo que no
+       cabía (los atajos quedaban cortados por abajo) porque .body tenía
+       overflow:hidden y las columnas no tenían scroll propio. */
+    .col {
+      display: flex; flex-direction: column; gap: 14px;
+      min-height: 0;
+      overflow-y: auto;
+      padding-right: 4px;   /* hueco para la barra, que no tape el contenido */
+    }
+    .col::-webkit-scrollbar { width: 7px; }
+    .col::-webkit-scrollbar-track { background: transparent; }
+    .col::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 4px;
+    }
+    .col::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.22); }
 
     .panel {
       background: rgba(255, 255, 255, 0.035);
@@ -80,11 +245,9 @@
       border-radius: 12px;
       padding: 16px;
     }
-    .panel.scroll { overflow-y: auto; min-height: 0; flex: 1; }
-    .panel.scroll::-webkit-scrollbar { width: 6px; }
-    .panel.scroll::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.14); border-radius: 3px;
-    }
+    /* El historial ya no scrollea por su cuenta: lo hace la columna entera,
+       así se evitan dos barras de scroll anidadas. */
+    .panel.scroll { flex-shrink: 0; }
 
     .panel h2 {
       font-size: 10.5px;
@@ -398,6 +561,67 @@
       </div>
       <h1>Brainlabrecord</h1>
       <div class="spacer"></div>
+
+      <!-- Cuenta: email + avatar. El menú cuelga de aquí. -->
+      <div class="account" id="account">
+        <span class="account-email" id="userEmail">—</span>
+        <button class="avatar" id="avatarBtn" title="Opciones de la cuenta">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+        </button>
+
+        <div class="account-menu" id="accountMenu">
+          <div class="menu-head">
+            <div class="menu-email" id="menuEmail">—</div>
+            <div class="menu-sub" id="menuUserId">—</div>
+          </div>
+
+          <button class="menu-item" id="miOpenFolder">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
+            </svg>
+            <span>Mis grabaciones</span>
+          </button>
+
+          <button class="menu-item" id="miPending">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/>
+            </svg>
+            <span>Pendientes de subir</span>
+            <span class="menu-badge" id="pendingBadge">0</span>
+          </button>
+
+          <button class="menu-item" id="miLog">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>
+              <path d="M8 13h8"/><path d="M8 17h5"/>
+            </svg>
+            <span>Registro de actividad</span>
+          </button>
+
+          <div class="menu-sep"></div>
+
+          <button class="menu-item" id="miAutostart">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>
+            </svg>
+            <span>Iniciar con Windows</span>
+            <span class="menu-check" id="autostartCheck">&#10003;</span>
+          </button>
+
+          <div class="menu-sep"></div>
+
+          <button class="menu-item danger" id="miLogout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>
+            </svg>
+            <span>Cerrar sesión</span>
+          </button>
+        </div>
+      </div>
+
       <button class="close-btn" id="closeBtn" title="Cerrar (sigue en la bandeja)">&#10005;</button>
     </div>
 
@@ -557,9 +781,26 @@
     </div>
 
     <div class="footer">
-      <span id="userEmail">—</span>
+      <span>Brainlabrecord v1.0.0</span>
       <div class="spacer"></div>
-      <button class="link-btn" id="logoutBtn">Cerrar sesión</button>
+      <span id="footerHint"></span>
+    </div>
+
+    <!-- Confirmación antes de terminar: una grabación cortada por error no se
+         puede reanudar, se queda partida en dos grabaciones distintas. -->
+    <div class="overlay" id="confirmOverlay">
+      <div class="dialog">
+        <div class="icon">
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        </div>
+        <h3>¿Terminar la grabación?</h3>
+        <p>Se cerrará la grabación actual y se subirá al servidor. No se puede reanudar después.</p>
+        <div class="stats" id="confirmStats"></div>
+        <div class="dialog-actions">
+          <button class="btn-cancel" id="confirmCancel">Seguir grabando</button>
+          <button class="btn-confirm" id="confirmStop">Terminar</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -635,24 +876,111 @@
     }
 
     // ── Acciones ──
+    const overlay = document.getElementById('confirmOverlay');
+
+    // Terminar pide confirmación; empezar no (empezar no destruye nada).
+    function askStopConfirmation() {
+      const elapsed = startedAtMs
+        ? formatElapsed(Math.floor((Date.now() - startedAtMs) / 1000))
+        : '00:00:00';
+      document.getElementById('confirmStats').textContent =
+        `${currentRecId ?? 'Grabación'} · ${elapsed} grabados`;
+      overlay.classList.add('open');
+    }
+
+    function closeConfirmation() { overlay.classList.remove('open'); }
+
     recBtn.addEventListener('click', async () => {
+      if (isRecording) {
+        askStopConfirmation();
+        return;
+      }
       recBtn.disabled = true;
       try {
-        if (isRecording) {
-          await ipcRenderer.invoke('recording:stop');
-        } else {
-          await ipcRenderer.invoke('recording:start');
-        }
+        await ipcRenderer.invoke('recording:start');
       } finally {
         recBtn.disabled = false;
       }
+    });
+
+    document.getElementById('confirmCancel').addEventListener('click', closeConfirmation);
+
+    document.getElementById('confirmStop').addEventListener('click', async () => {
+      closeConfirmation();
+      recBtn.disabled = true;
+      try {
+        await ipcRenderer.invoke('recording:stop');
+      } finally {
+        recBtn.disabled = false;
+      }
+    });
+
+    // Escape cancela; es lo que espera cualquiera ante un diálogo.
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (overlay.classList.contains('open')) closeConfirmation();
+        else closeAccountMenu();
+      }
+    });
+
+    // El panel flotante también pide confirmación, pero no puede mostrar este
+    // diálogo (es otra ventana): el main nos trae aquí para preguntarlo.
+    ipcRenderer.on('recording:confirm-stop', () => {
+      ipcRenderer.send('dashboard:open');
+      askStopConfirmation();
     });
 
     document.getElementById('closeBtn').addEventListener('click', () => {
       ipcRenderer.send('window-close');
     });
 
-    document.getElementById('logoutBtn').addEventListener('click', () => {
+    // ── Menú de cuenta ──
+    const accountMenu = document.getElementById('accountMenu');
+    const avatarBtn = document.getElementById('avatarBtn');
+
+    function closeAccountMenu() {
+      accountMenu.classList.remove('open');
+      avatarBtn.classList.remove('open');
+    }
+
+    avatarBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = accountMenu.classList.toggle('open');
+      avatarBtn.classList.toggle('open', open);
+    });
+
+    // Clic fuera cierra el menú.
+    document.addEventListener('click', (e) => {
+      if (!accountMenu.contains(e.target) && e.target !== avatarBtn) closeAccountMenu();
+    });
+
+    document.getElementById('miOpenFolder').addEventListener('click', () => {
+      closeAccountMenu();
+      ipcRenderer.send('account:open-recordings');
+    });
+
+    document.getElementById('miLog').addEventListener('click', () => {
+      closeAccountMenu();
+      ipcRenderer.send('account:open-log');
+    });
+
+    document.getElementById('miPending').addEventListener('click', async () => {
+      closeAccountMenu();
+      const s = await ipcRenderer.invoke('upload:status');
+      const total = s.pending + s.uploading;
+      alert(total > 0
+        ? `Quedan ${total} fragmento(s) por subir.\n\nNo apagues el equipo hasta que terminen, o se perderán.`
+        : 'Todo subido. No hay nada pendiente.');
+    });
+
+    const autostartCheck = document.getElementById('autostartCheck');
+    document.getElementById('miAutostart').addEventListener('click', async () => {
+      const enabled = await ipcRenderer.invoke('account:toggle-autostart');
+      autostartCheck.classList.toggle('on', enabled);
+    });
+
+    document.getElementById('miLogout').addEventListener('click', () => {
+      closeAccountMenu();
       ipcRenderer.send('logout');
     });
 
@@ -699,6 +1027,10 @@
       uploadDetail.textContent = parts.length > 0
         ? parts.join(' · ')
         : 'Sin fragmentos pendientes';
+
+      const badge = document.getElementById('pendingBadge');
+      badge.textContent = String(inFlight);
+      badge.classList.toggle('active', inFlight > 0);
     });
 
     ipcRenderer.on('capture:level', (_e, level) => {
@@ -934,6 +1266,12 @@
       applyConfig(config);
 
       document.getElementById('userEmail').textContent = session.email ?? '—';
+      document.getElementById('menuEmail').textContent = session.email ?? '—';
+      document.getElementById('menuUserId').textContent =
+        session.numericUserId != null ? `Usuario #${session.numericUserId}` : 'Sin identificar';
+
+      const autostart = await ipcRenderer.invoke('account:get-autostart');
+      document.getElementById('autostartCheck').classList.toggle('on', autostart);
 
       // Atajos: se pintan desde la misma definición que el main registra, y se
       // marcan los que el sistema rechazó (otra app los tenía cogidos) para que
@@ -941,7 +1279,7 @@
       const { shortcuts, failed } = shortcutInfo;
       const help = [
         [shortcuts.toggleRecording, 'Ctrl + Alt + R', 'Iniciar o terminar la grabación'],
-        [shortcuts.togglePanel, 'Ctrl + Alt + P', 'Mostrar u ocultar el panel'],
+        [shortcuts.togglePanel, 'Ctrl + Alt + P', 'Encoger o ampliar el panel flotante'],
         [shortcuts.openDashboard, 'Ctrl + Alt + D', 'Abrir este panel de control'],
       ];
 

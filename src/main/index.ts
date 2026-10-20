@@ -1,6 +1,6 @@
 import type { BrowserWindow as BW } from 'electron';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { app, BrowserWindow, ipcMain, Notification, globalShortcut, screen } =
+const { app, BrowserWindow, ipcMain, Notification, globalShortcut, screen, shell } =
   require('electron') as typeof import('electron');
 import path from 'path';
 import { loadEnv } from './env';
@@ -264,9 +264,18 @@ async function handleStopRecording(): Promise<void> {
   openDashboard();
 }
 
+// Pedir confirmación antes de parar. El diálogo vive en el dashboard (es la
+// ventana con sitio para mostrarlo), así que desde el panel o desde el atajo
+// traemos el dashboard al frente y le pedimos que pregunte.
+function requestStopConfirmation(): void {
+  if (!getRecordingStatus().isRecording) return;
+  openDashboard();
+  dashboardWindow?.webContents.send('recording:confirm-stop');
+}
+
 async function toggleRecording(): Promise<void> {
   if (getRecordingStatus().isRecording) {
-    await handleStopRecording();
+    requestStopConfirmation();
   } else {
     await handleStartRecording();
   }
@@ -307,14 +316,13 @@ function registerShortcuts(): void {
   }
 }
 
+// Ctrl+Alt+P alterna entre barra completa y punto. NO esconde el panel: el
+// indicador de que se está grabando no debe poder desaparecer de la pantalla.
 function togglePanelVisibility(): void {
   if (!getRecordingStatus().isRecording) return; // el panel solo existe grabando
-  if (!panelWindow) return;
-  if (panelWindow.isVisible()) {
-    panelWindow.hide();
-  } else {
-    panelWindow.show();
-  }
+  if (!panelWindow || panelWindow.isDestroyed()) return;
+  if (!panelWindow.isVisible()) panelWindow.show();
+  panelWindow.webContents.send('panel:toggle-size');
 }
 
 // El panel cambia de tamaño al minimizarse: pasa de la barra completa a solo
@@ -348,6 +356,16 @@ async function bootstrap(): Promise<void> {
     onOpenDashboard: () => { openDashboard(); },
   });
 
+  // Pendientes al salir: si quedan chunks sin subir y el empleado cierra la
+  // app, se pierden. Avisarlo es barato y evita perder una grabación entera.
+  app.on('before-quit', (event) => {
+    const { pending, uploading } = getUploadStatus();
+    if (pending + uploading > 0) {
+      log(`[app] Saliendo con ${pending + uploading} chunk(s) sin subir`);
+    }
+    void event;
+  });
+
   app.setLoginItemSettings({ openAtLogin: true, name: 'Brainlabrecord' });
   registerShortcuts();
 
@@ -379,6 +397,8 @@ async function bootstrap(): Promise<void> {
     await handleStopRecording();
     return getRecordingStatus();
   });
+
+  ipcMain.on('recording:request-stop', () => { requestStopConfirmation(); });
 
   ipcMain.handle('recording:status', () => getRecordingStatus());
   ipcMain.handle('upload:status', () => getUploadStatus());
@@ -414,6 +434,31 @@ async function bootstrap(): Promise<void> {
   });
 
   ipcMain.on('dashboard:open', () => { openDashboard(); });
+
+  // ── IPC: menú de cuenta ──
+  ipcMain.on('account:open-recordings', () => {
+    // Las grabaciones viven en MinIO, no en disco: abrimos la consola web en
+    // la carpeta del empleado.
+    const base = process.env.MINIO_CONSOLE_URL ?? 'http://192.168.1.175:9101';
+    const userId = currentSession?.numericUserId;
+    const url = userId != null
+      ? `${base}/browser/recordings/${userId}%2F`
+      : `${base}/browser/recordings`;
+    void shell.openExternal(url);
+  });
+
+  ipcMain.on('account:open-log', () => {
+    void shell.openPath(path.join(app.getPath('userData'), 'timesheet-debug.log'));
+  });
+
+  ipcMain.handle('account:get-autostart', () => app.getLoginItemSettings().openAtLogin);
+
+  ipcMain.handle('account:toggle-autostart', () => {
+    const next = !app.getLoginItemSettings().openAtLogin;
+    app.setLoginItemSettings({ openAtLogin: next, name: 'Brainlabrecord' });
+    log(`[account] Iniciar con Windows: ${next ? 'activado' : 'desactivado'}`);
+    return next;
+  });
 
   // El nivel de audio lo mide la ventana de captura (es la única que tiene el
   // stream). Lo reenviamos al panel y al dashboard para pintar el VU.
