@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Brainlabrecord</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      -webkit-user-select: none;
+      user-select: none;
+      color: #f5f5f5;
+    }
+
+    .glass {
+      position: relative;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(24px) saturate(120%);
+      -webkit-backdrop-filter: blur(24px) saturate(120%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    /* ── Barra de título propia (la ventana es frameless) ── */
+    .titlebar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      height: 46px;
+      padding: 0 10px 0 18px;
+      flex-shrink: 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      -webkit-app-region: drag;
+    }
+    .titlebar .logo {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .titlebar .logo svg { width: 12px; height: 12px; }
+    .titlebar h1 { font-size: 13px; font-weight: 600; letter-spacing: 0.4px; }
+    .titlebar .spacer { flex: 1; }
+
+    .close-btn {
+      -webkit-app-region: no-drag;
+      width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      border: none; background: transparent;
+      color: rgba(255, 255, 255, 0.55);
+      font-size: 16px; border-radius: 8px; cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .close-btn:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+
+    /* ── Cuerpo en dos columnas ── */
+    .body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 272px;
+      gap: 18px;
+      padding: 18px;
+      overflow: hidden;
+    }
+    .col { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+
+    .panel {
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .panel.scroll { overflow-y: auto; min-height: 0; flex: 1; }
+    .panel.scroll::-webkit-scrollbar { width: 6px; }
+    .panel.scroll::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.14); border-radius: 3px;
+    }
+
+    .panel h2 {
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 1.1px;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.4);
+      margin-bottom: 14px;
+    }
+
+    /* ── Bloque de grabación ── */
+    .rec-state { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .rec-dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      background: rgba(255, 255, 255, 0.22);
+      flex-shrink: 0;
+    }
+    body.recording .rec-dot { background: #ef4444; animation: pulse 1.6s infinite; }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); }
+      70%  { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+    .rec-text { flex: 1; }
+    .rec-text .label { font-size: 14px; font-weight: 600; }
+    .rec-text .sub {
+      font-size: 11.5px; color: rgba(255, 255, 255, 0.42); margin-top: 2px;
+    }
+    .rec-time {
+      font-size: 26px; font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 1px;
+      color: rgba(255, 255, 255, 0.92);
+    }
+
+    button.action {
+      width: 100%;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 14px; font-weight: 600; letter-spacing: 0.4px;
+      padding: 13px;
+      transition: background 0.15s, border-color 0.15s;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+    }
+    button.action:hover { background: rgba(255, 255, 255, 0.18); border-color: rgba(255,255,255,0.35); }
+    button.action.danger {
+      background: rgba(239, 68, 68, 0.16); border-color: rgba(239, 68, 68, 0.45); color: #fca5a5;
+    }
+    button.action.danger:hover { background: rgba(239, 68, 68, 0.26); }
+    button.action:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .hint {
+      font-size: 11px; color: rgba(255, 255, 255, 0.35);
+      text-align: center; margin-top: 9px;
+    }
+
+    /* ── Estado de subida ── */
+    .upload-row { display: flex; align-items: center; gap: 9px; font-size: 12.5px; }
+    .upload-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #4ade80; flex-shrink: 0; transition: background 0.3s;
+    }
+    .upload-dot.uploading { background: #fbbf24; }
+    .upload-dot.failing   { background: #ef4444; }
+    .upload-detail {
+      font-size: 11.5px; color: rgba(255, 255, 255, 0.4); margin-top: 7px;
+    }
+
+    /* VU del audio */
+    .audio-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+    .audio-row .cap { font-size: 11.5px; color: rgba(255,255,255,0.4); flex-shrink: 0; }
+    .vu { display: flex; align-items: flex-end; gap: 2px; height: 16px; flex: 1; }
+    .vu span {
+      flex: 1; height: 3px; max-width: 5px;
+      background: rgba(255, 255, 255, 0.16); border-radius: 1px;
+      transition: height 0.08s linear, background 0.08s linear;
+    }
+    .vu span.on { background: #4ade80; }
+
+    /* ── Ajustes ── */
+    .setting {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; padding: 9px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .setting:last-child { border-bottom: none; }
+    .setting .name { font-size: 12.5px; }
+    .setting .desc { font-size: 10.5px; color: rgba(255,255,255,0.33); margin-top: 1px; }
+
+    select {
+      -webkit-app-region: no-drag;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 7px;
+      color: #f5f5f5;
+      font-size: 12px;
+      padding: 5px 7px;
+      cursor: pointer;
+      outline: none;
+      flex-shrink: 0;
+    }
+    select option { background: #1a1a1a; }
+
+    /* Toggle */
+    .toggle {
+      -webkit-app-region: no-drag;
+      position: relative;
+      width: 38px; height: 21px;
+      border-radius: 11px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      cursor: pointer; flex-shrink: 0;
+      transition: background 0.2s;
+    }
+    .toggle::after {
+      content: '';
+      position: absolute; top: 2px; left: 2px;
+      width: 15px; height: 15px; border-radius: 50%;
+      background: rgba(255, 255, 255, 0.75);
+      transition: transform 0.2s, background 0.2s;
+    }
+    .toggle.on { background: rgba(74, 222, 128, 0.3); border-color: rgba(74, 222, 128, 0.5); }
+    .toggle.on::after { transform: translateX(17px); background: #4ade80; }
+
+    .settings-note {
+      font-size: 10.5px; color: rgba(255, 255, 255, 0.3);
+      margin-top: 12px; line-height: 1.45;
+    }
+
+    /* ── Atajos ── */
+    .shortcut {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; padding: 8px 0;
+    }
+    .shortcut .desc { font-size: 11.5px; color: rgba(255,255,255,0.62); }
+    kbd {
+      font-family: inherit; font-size: 10.5px; font-weight: 600;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-bottom-width: 2px;
+      border-radius: 5px;
+      padding: 3px 7px;
+      white-space: nowrap; flex-shrink: 0;
+      color: rgba(255, 255, 255, 0.85);
+    }
+    .shortcut.failed kbd {
+      border-color: rgba(239, 68, 68, 0.45); color: #fca5a5;
+      text-decoration: line-through;
+    }
+    .shortcut-warn {
+      font-size: 10.5px; color: #fca5a5; line-height: 1.45;
+      margin-top: 10px; display: none;
+    }
+
+    /* ── Historial ── */
+    .history-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 12px;
+    }
+    .history-item:last-child { border-bottom: none; }
+    .history-item .id {
+      font-variant-numeric: tabular-nums;
+      color: rgba(255,255,255,0.75); flex: 1;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .history-item .dur {
+      color: rgba(255,255,255,0.45); font-variant-numeric: tabular-nums; flex-shrink: 0;
+    }
+    .empty {
+      font-size: 11.5px; color: rgba(255, 255, 255, 0.3);
+      text-align: center; padding: 14px 0;
+    }
+
+    /* ── Pie: usuario ── */
+    .footer {
+      display: flex; align-items: center; gap: 10px;
+      height: 44px; padding: 0 18px;
+      flex-shrink: 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      font-size: 11.5px;
+      color: rgba(255, 255, 255, 0.45);
+    }
+    .footer .spacer { flex: 1; }
+    .link-btn {
+      -webkit-app-region: no-drag;
+      background: transparent; border: none;
+      color: rgba(255, 255, 255, 0.5);
+      font-size: 11.5px; cursor: pointer; padding: 5px 9px;
+      border-radius: 6px;
+      transition: background 0.15s, color 0.15s;
+    }
+    .link-btn:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+  </style>
+</head>
+<body>
+  <div class="glass">
+    <div class="titlebar">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
+          <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.75)"></circle>
+          <circle cx="12" cy="12" r="3.5" fill="rgba(255,255,255,0.75)"></circle>
+        </svg>
+      </div>
+      <h1>Brainlabrecord</h1>
+      <div class="spacer"></div>
+      <button class="close-btn" id="closeBtn" title="Cerrar (sigue en la bandeja)">&#10005;</button>
+    </div>
+
+    <div class="body">
+      <!-- Columna izquierda -->
+      <div class="col">
+        <div class="panel">
+          <h2>Grabación</h2>
+          <div class="rec-state">
+            <div class="rec-dot"></div>
+            <div class="rec-text">
+              <div class="label" id="stateLabel">Inactivo</div>
+              <div class="sub" id="stateSub">Listo para grabar</div>
+            </div>
+            <div class="rec-time" id="recTime">00:00:00</div>
+          </div>
+          <button class="action" id="recBtn">Iniciar grabación</button>
+          <div class="hint">o pulsa <strong id="recHint">Ctrl + Alt + R</strong> desde cualquier aplicación</div>
+        </div>
+
+        <div class="panel">
+          <h2>Estado de subida</h2>
+          <div class="upload-row">
+            <div class="upload-dot" id="uploadDot"></div>
+            <span id="uploadLabel">Todo subido</span>
+          </div>
+          <div class="upload-detail" id="uploadDetail">Sin fragmentos pendientes</div>
+          <div class="audio-row">
+            <span class="cap">Audio</span>
+            <div class="vu" id="vu">
+              <span></span><span></span><span></span><span></span>
+              <span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel scroll">
+          <h2>Grabaciones de esta sesión</h2>
+          <div id="history"><div class="empty">Aún no has grabado nada</div></div>
+        </div>
+      </div>
+
+      <!-- Columna derecha -->
+      <div class="col">
+        <div class="panel">
+          <h2>Calidad</h2>
+          <div class="setting">
+            <div>
+              <div class="name">Fotogramas</div>
+              <div class="desc">Más fps = más peso</div>
+            </div>
+            <select id="fps">
+              <option value="3">3 fps</option>
+              <option value="5">5 fps</option>
+              <option value="10">10 fps</option>
+              <option value="15">15 fps</option>
+            </select>
+          </div>
+          <div class="setting">
+            <div>
+              <div class="name">Resolución</div>
+              <div class="desc">% de la pantalla</div>
+            </div>
+            <select id="scale">
+              <option value="0.5">50 %</option>
+              <option value="0.75">75 %</option>
+              <option value="1">100 %</option>
+            </select>
+          </div>
+          <div class="setting">
+            <div>
+              <div class="name">Compresión</div>
+              <div class="desc">Calidad de imagen</div>
+            </div>
+            <select id="crf">
+              <option value="20">Alta</option>
+              <option value="26">Media</option>
+              <option value="32">Baja</option>
+            </select>
+          </div>
+          <div class="setting">
+            <div>
+              <div class="name">Audio del sistema</div>
+              <div class="desc">Graba lo que suena</div>
+            </div>
+            <div class="toggle on" id="audioToggle"></div>
+          </div>
+          <div class="settings-note">
+            Los cambios se aplican a la siguiente grabación, no a la que esté en curso.
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Atajos de teclado</h2>
+          <div id="shortcuts"></div>
+          <div class="shortcut-warn" id="shortcutWarn"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span id="userEmail">—</span>
+      <div class="spacer"></div>
+      <button class="link-btn" id="logoutBtn">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    const body = document.body;
+    const recBtn = document.getElementById('recBtn');
+    const recTime = document.getElementById('recTime');
+    const stateLabel = document.getElementById('stateLabel');
+    const stateSub = document.getElementById('stateSub');
+    const uploadDot = document.getElementById('uploadDot');
+    const uploadLabel = document.getElementById('uploadLabel');
+    const uploadDetail = document.getElementById('uploadDetail');
+    const vuBars = Array.from(document.querySelectorAll('#vu span'));
+    const historyEl = document.getElementById('history');
+
+    let isRecording = false;
+    let startedAtMs = 0;
+    let tickTimer = null;
+    let currentRecId = null;
+
+    // Historial en memoria: solo de esta sesión de la app. No se persiste, es
+    // una ayuda inmediata ("¿grabé ya la reunión?"), no un registro oficial —
+    // ese vive en MinIO.
+    const history = [];
+
+    function formatElapsed(sec) {
+      const h = String(Math.floor(sec / 3600)).padStart(2, '0');
+      const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
+      const s = String(sec % 60).padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
+
+    // Se recalcula desde startedAtMs en cada tick (no suma 1), para que no se
+    // desfase si el intervalo se retrasa.
+    function tick() {
+      if (!isRecording || !startedAtMs) return;
+      recTime.textContent = formatElapsed(Math.floor((Date.now() - startedAtMs) / 1000));
+    }
+
+    function renderRecordingState() {
+      body.classList.toggle('recording', isRecording);
+      recBtn.textContent = isRecording ? 'Terminar grabación' : 'Iniciar grabación';
+      recBtn.classList.toggle('danger', isRecording);
+      stateLabel.textContent = isRecording ? 'Grabando' : 'Inactivo';
+      stateSub.textContent = isRecording
+        ? (currentRecId ?? 'Grabación en curso')
+        : 'Listo para grabar';
+
+      if (isRecording) {
+        if (!tickTimer) { tick(); tickTimer = setInterval(tick, 1000); }
+      } else {
+        if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
+        recTime.textContent = '00:00:00';
+      }
+    }
+
+    function renderHistory() {
+      if (history.length === 0) {
+        historyEl.innerHTML = '<div class="empty">Aún no has grabado nada</div>';
+        return;
+      }
+      historyEl.innerHTML = history
+        .slice()
+        .reverse()
+        .map((h) => `
+          <div class="history-item">
+            <span class="id">${h.recId}</span>
+            <span class="dur">${formatElapsed(h.durationSec)}</span>
+          </div>`)
+        .join('');
+    }
+
+    // ── Acciones ──
+    recBtn.addEventListener('click', async () => {
+      recBtn.disabled = true;
+      try {
+        if (isRecording) {
+          await ipcRenderer.invoke('recording:stop');
+        } else {
+          await ipcRenderer.invoke('recording:start');
+        }
+      } finally {
+        recBtn.disabled = false;
+      }
+    });
+
+    document.getElementById('closeBtn').addEventListener('click', () => {
+      ipcRenderer.send('window-close');
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      ipcRenderer.send('logout');
+    });
+
+    // ── Estado desde el main ──
+    ipcRenderer.on('recording:status', (_e, status) => {
+      const wasRecording = isRecording;
+      const previousRecId = currentRecId;
+      const previousStart = startedAtMs;
+
+      isRecording = status.isRecording;
+      startedAtMs = status.startedAtMs;
+      currentRecId = status.recId;
+
+      // Al pasar de grabando a parado, guardamos la grabación en el historial.
+      if (wasRecording && !isRecording && previousRecId) {
+        history.push({
+          recId: previousRecId,
+          durationSec: Math.max(0, Math.floor((Date.now() - previousStart) / 1000)),
+        });
+        renderHistory();
+      }
+
+      renderRecordingState();
+    });
+
+    ipcRenderer.on('upload:status', (_e, status) => {
+      uploadDot.classList.remove('uploading', 'failing');
+      const inFlight = status.pending + status.uploading;
+
+      if (status.health === 'uploading') {
+        uploadDot.classList.add('uploading');
+        uploadLabel.textContent = 'Subiendo';
+      } else if (status.health === 'failing') {
+        uploadDot.classList.add('failing');
+        uploadLabel.textContent = 'Reintentando';
+      } else {
+        uploadLabel.textContent = 'Todo subido';
+      }
+
+      const parts = [];
+      if (inFlight > 0) parts.push(`${inFlight} pendiente(s)`);
+      if (status.uploaded > 0) parts.push(`${status.uploaded} subido(s)`);
+      if (status.failed > 0) parts.push(`${status.failed} descartado(s)`);
+      uploadDetail.textContent = parts.length > 0
+        ? parts.join(' · ')
+        : 'Sin fragmentos pendientes';
+    });
+
+    ipcRenderer.on('capture:level', (_e, level) => {
+      vuBars.forEach((bar, i) => {
+        const threshold = (i + 1) / vuBars.length;
+        bar.classList.toggle('on', level >= threshold * 0.65);
+        bar.style.height = `${3 + Math.max(0, Math.min(1, level)) * 13}px`;
+      });
+    });
+
+    ipcRenderer.on('config:changed', (_e, config) => { applyConfig(config); });
+
+    // ── Ajustes ──
+    // RESOLUTION_SCALE no se guarda en la config (el main calcula width/height
+    // desde la pantalla), así que el desplegable solo refleja lo que el usuario
+    // elige en esta ventana y se envía como escala.
+    const fpsSel = document.getElementById('fps');
+    const scaleSel = document.getElementById('scale');
+    const crfSel = document.getElementById('crf');
+    const audioToggle = document.getElementById('audioToggle');
+
+    function applyConfig(config) {
+      fpsSel.value = String(config.fps);
+      crfSel.value = String(config.crf);
+      scaleSel.value = String(config.resolutionScale ?? 0.75);
+      audioToggle.classList.toggle('on', config.captureAudio);
+    }
+
+    fpsSel.addEventListener('change', () => {
+      ipcRenderer.invoke('config:set', { fps: Number(fpsSel.value) });
+    });
+    crfSel.addEventListener('change', () => {
+      ipcRenderer.invoke('config:set', { crf: Number(crfSel.value) });
+    });
+    scaleSel.addEventListener('change', () => {
+      ipcRenderer.invoke('config:set', { resolutionScale: Number(scaleSel.value) });
+    });
+    audioToggle.addEventListener('click', () => {
+      const next = !audioToggle.classList.contains('on');
+      audioToggle.classList.toggle('on', next);
+      ipcRenderer.invoke('config:set', { captureAudio: next });
+    });
+
+    // ── Arranque ──
+    (async () => {
+      const [status, upload, config, session, shortcutInfo] = await Promise.all([
+        ipcRenderer.invoke('recording:status'),
+        ipcRenderer.invoke('upload:status'),
+        ipcRenderer.invoke('config:get'),
+        ipcRenderer.invoke('session:info'),
+        ipcRenderer.invoke('shortcuts:info'),
+      ]);
+
+      isRecording = status.isRecording;
+      startedAtMs = status.startedAtMs;
+      currentRecId = status.recId;
+      renderRecordingState();
+      renderHistory();
+      applyConfig(config);
+
+      document.getElementById('userEmail').textContent = session.email ?? '—';
+
+      // Atajos: se pintan desde la misma definición que el main registra, y se
+      // marcan los que el sistema rechazó (otra app los tenía cogidos) para que
+      // el empleado no pulse en vano.
+      const { shortcuts, failed } = shortcutInfo;
+      const help = [
+        [shortcuts.toggleRecording, 'Ctrl + Alt + R', 'Iniciar o terminar la grabación'],
+        [shortcuts.togglePanel, 'Ctrl + Alt + P', 'Mostrar u ocultar el panel'],
+        [shortcuts.openDashboard, 'Ctrl + Alt + D', 'Abrir este panel de control'],
+      ];
+
+      document.getElementById('shortcuts').innerHTML = help
+        .map(([accel, label, desc]) => {
+          const broken = failed.includes(accel);
+          return `<div class="shortcut${broken ? ' failed' : ''}">
+                    <span class="desc">${desc}</span>
+                    <kbd>${label}</kbd>
+                  </div>`;
+        })
+        .join('');
+
+      document.getElementById('recHint').textContent = 'Ctrl + Alt + R';
+
+      if (failed.length > 0) {
+        const warn = document.getElementById('shortcutWarn');
+        warn.textContent = 'Otra aplicación ya usa los atajos tachados, '
+          + 'así que no funcionarán. Usa los botones de esta ventana.';
+        warn.style.display = 'block';
+      }
+    })();
+  </script>
+</body>
+</html>

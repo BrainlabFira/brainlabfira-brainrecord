@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Brainlabrecord — captura</title>
+</head>
+<body>
+  <!--
+    Ventana oculta y permanente: solo motor de captura, sin interfaz.
+
+    Antes esto vivía dentro de login.html, así que el MediaRecorder compartía
+    documento con el formulario de acceso. Eso ataba la grabación a una ventana
+    que el empleado podía cerrar, y hacía imposible tener un dashboard aparte.
+    Aquí nada se muestra ni se cierra mientras la app está viva.
+  -->
+  <script>
+    const { ipcRenderer } = require('electron');
+    const fs = require('fs');
+    const path = require('path');
+
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let currentChunkPath = null;
+    let activeStream = null;
+
+    // Medición del nivel de audio para el VU del panel flotante. Sirve para
+    // detectar el fallo más caro: grabar una reunión entera en silencio porque
+    // el audio del sistema no se estaba captando de verdad.
+    let audioContext = null;
+    let analyser = null;
+    let levelTimer = null;
+
+    const dbg = (m) => ipcRenderer.send('capture-debug', m);
+
+    function startLevelMetering(stream) {
+      stopLevelMetering();
+      if (stream.getAudioTracks().length === 0) return;
+
+      try {
+        audioContext = new AudioContext();
+        const source = audioContext.createMediaStreamSource(stream);
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+
+        const buffer = new Uint8Array(analyser.frequencyBinCount);
+
+        // 10 muestras/s: suficiente para que la barra se vea viva sin castigar
+        // la CPU durante horas de grabación.
+        levelTimer = setInterval(() => {
+          analyser.getByteTimeDomainData(buffer);
+          // RMS sobre la desviación respecto al centro (128 = silencio).
+          let sum = 0;
+          for (let i = 0; i < buffer.length; i++) {
+            const d = (buffer[i] - 128) / 128;
+            sum += d * d;
+          }
+          const rms = Math.sqrt(sum / buffer.length);
+          // Escala suave: el habla normal queda en una zona visible sin que la
+          // barra sature al primer pico.
+          const level = Math.min(1, rms * 4);
+          ipcRenderer.send('capture-level', level);
+        }, 100);
+      } catch (err) {
+        dbg('No se pudo medir el nivel de audio: ' + err.message);
+      }
+    }
+
+    function stopLevelMetering() {
+      if (levelTimer) { clearInterval(levelTimer); levelTimer = null; }
+      if (audioContext) {
+        audioContext.close().catch(() => {});
+        audioContext = null;
+      }
+      analyser = null;
+      ipcRenderer.send('capture-level', 0);
+    }
+
+    ipcRenderer.on('start-capture', async (_event, { chunkPath, config }) => {
+      currentChunkPath = chunkPath;
+      recordedChunks = [];
+      dbg('start-capture recibido, pidiendo fuentes...');
+
+      try {
+        // desktopCapturer vive en el main process (Electron 17+); pedimos las
+        // fuentes por IPC.
+        const sources = await ipcRenderer.invoke('get-screen-sources');
+        dbg('fuentes recibidas: ' + (sources ? sources.length : 0));
+
+        if (!sources || sources.length === 0) {
+          ipcRenderer.send('capture-error', 'No se encontraron fuentes de pantalla');
+          return;
+        }
+
+        const constraints = {
+          audio: config.captureAudio ? {
+            mandatory: { chromeMediaSource: 'desktop' }
+          } : false,
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: sources[0].id,
+              minWidth: config.width,
+              minHeight: config.height,
+              maxWidth: config.width,
+              maxHeight: config.height,
+              maxFrameRate: config.fps,
+            },
+          },
+        };
+
+        dbg('llamando getUserMedia con sourceId ' + sources[0].id);
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        activeStream = stream;
+        dbg('stream obtenido, iniciando MediaRecorder');
+
+        // Bitrate alto para que el webm intermedio no difumine el texto antes de
+        // que FFmpeg reencode. ~8 Mbps es generoso para contenido de pantalla a 5fps.
+        mediaRecorder = new MediaRecorder(stream, {
+          mimeType: 'video/webm;codecs=vp9,opus',
+          videoBitsPerSecond: 8_000_000,
+          audioBitsPerSecond: 128_000,
+        });
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          blob.arrayBuffer().then((buffer) => {
+            fs.mkdirSync(path.dirname(currentChunkPath), { recursive: true });
+            fs.writeFileSync(currentChunkPath, Buffer.from(buffer));
+            ipcRenderer.send('capture-saved', currentChunkPath);
+            stream.getTracks().forEach((t) => t.stop());
+            if (activeStream === stream) activeStream = null;
+          });
+        };
+
+        mediaRecorder.start(1000); // recoge datos cada segundo
+        startLevelMetering(stream);
+      } catch (err) {
+        ipcRenderer.send('capture-error', err.message);
+      }
+    });
+
+    ipcRenderer.on('stop-capture', () => {
+      stopLevelMetering();
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+    });
+  </script>
+</body>
+</html>

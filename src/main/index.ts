@@ -135,7 +135,8 @@ function createPanelWindow(): void {
     movable: true,
     alwaysOnTop: true,
     skipTaskbar: true,
-    focusable: false,     // no roba el foco a lo que el empleado esté haciendo
+    // focusable se queda en true a propósito: con false, en Windows la ventana
+    // deja de recibir clics y los botones de terminar/minimizar no responden.
     backgroundColor: '#00000000',
     webPreferences: { nodeIntegration: true, contextIsolation: false },
   });
@@ -411,6 +412,12 @@ async function bootstrap(): Promise<void> {
   });
 
   ipcMain.on('dashboard:open', () => { openDashboard(); });
+
+  // El nivel de audio lo mide la ventana de captura (es la única que tiene el
+  // stream). Lo reenviamos al panel y al dashboard para pintar el VU.
+  ipcMain.on('capture-level', (_event, level: number) => {
+    broadcast('capture:level', level);
+  });
 
   app.on('window-all-closed', () => { /* keep running in tray */ });
   app.on('before-quit', async () => { await stopRecording(); });

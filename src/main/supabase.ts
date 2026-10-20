@@ -8,6 +8,8 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SessionData, saveSession } from './auth';
 import { log } from './logger';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const WebSocket = require('ws');
 
 let supabase: SupabaseClient | null = null;
 
@@ -59,10 +61,13 @@ export async function initSupabase(session: SessionData): Promise<void> {
   if (!url) throw new Error('SUPABASE_URL no está definida en el .env');
   if (!key) throw new Error('SUPABASE_ANON_KEY no está definida en el .env');
 
-  // Sin `realtime: { transport: WebSocket }`: ya no hay suscripciones Realtime,
-  // así que no hace falta inyectar el WebSocket de `ws` para Node.
+  // `transport: WebSocket` sigue siendo obligatorio aunque ya no usemos
+  // Realtime: createClient instancia un RealtimeClient en el constructor, y en
+  // Node 20 (el de Electron 33) no hay WebSocket nativo, así que lanza
+  // "Node.js 20 detected without native WebSocket support" y la app no conecta.
   supabase = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
+    realtime: { transport: WebSocket },
   });
 
   currentSession = session;

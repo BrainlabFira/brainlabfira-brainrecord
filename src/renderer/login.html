@@ -145,21 +145,6 @@
       text-align: center;
     }
 
-    .recording-indicator {
-      display: none;
-      align-items: center;
-      gap: 8px;
-      font-size: 12.5px;
-      color: #4ade80;
-      margin-top: 16px;
-    }
-    .dot {
-      width: 8px; height: 8px;
-      background: #4ade80;
-      border-radius: 50%;
-      animation: pulse 1.5s infinite;
-    }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
   </style>
 </head>
 <body>
@@ -196,10 +181,6 @@
       <button class="submit" id="loginBtn">Iniciar sesión</button>
 
       <div class="error" id="errorMsg"></div>
-
-      <div class="recording-indicator" id="recordingIndicator">
-        <div class="dot"></div>
-        Grabación activa
       </div>
     </div>
   </div>
@@ -217,7 +198,6 @@
     const emailInput = document.getElementById('email');
     const passwordInput = document.getElementById('password');
     const errorMsg = document.getElementById('errorMsg');
-    const recordingIndicator = document.getElementById('recordingIndicator');
 
     // Botón cerrar (la ventana no tiene frame nativo) — oculta la ventana, la app
     // sigue viva en la bandeja.
@@ -297,92 +277,6 @@
       errorMsg.textContent = msg;
       errorMsg.style.display = 'block';
     }
-
-    // ────────────────────────────────────────────────
-    // Screen capture (desktopCapturer runs in renderer)
-    // ────────────────────────────────────────────────
-    let mediaRecorder = null;
-    let recordedChunks = [];
-    let currentChunkPath = null;
-    const fs = require('fs');
-    const path = require('path');
-
-    const dbg = (m) => ipcRenderer.send('capture-debug', m);
-
-    ipcRenderer.on('start-capture', async (_event, { chunkPath, config }) => {
-      currentChunkPath = chunkPath;
-      recordedChunks = [];
-      dbg('start-capture recibido, pidiendo fuentes...');
-
-      try {
-        // desktopCapturer lives in the main process (Electron 17+); ask for sources via IPC
-        const sources = await ipcRenderer.invoke('get-screen-sources');
-        dbg('fuentes recibidas: ' + (sources ? sources.length : 0));
-
-        if (!sources || sources.length === 0) {
-          ipcRenderer.send('capture-error', 'No se encontraron fuentes de pantalla');
-          return;
-        }
-
-        const constraints = {
-          audio: config.captureAudio ? {
-            mandatory: {
-              chromeMediaSource: 'desktop',
-            }
-          } : false,
-          video: {
-            mandatory: {
-              chromeMediaSource: 'desktop',
-              chromeMediaSourceId: sources[0].id,
-              minWidth: config.width,
-              minHeight: config.height,
-              maxWidth: config.width,
-              maxHeight: config.height,
-              maxFrameRate: config.fps,
-            },
-          },
-        };
-
-        dbg('llamando getUserMedia con sourceId ' + sources[0].id);
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        dbg('stream obtenido, iniciando MediaRecorder');
-
-        // High bitrate so the intermediate webm doesn't blur text before FFmpeg
-        // re-encodes. Scaled to resolution: ~8 Mbps is generous for 5fps screen content.
-        // codecs=vp9,opus → vídeo VP9 + audio Opus (audio del sistema para meetings).
-        mediaRecorder = new MediaRecorder(stream, {
-          mimeType: 'video/webm;codecs=vp9,opus',
-          videoBitsPerSecond: 8_000_000,
-          audioBitsPerSecond: 128_000,
-        });
-
-        mediaRecorder.ondataavailable = (e) => {
-          if (e.data.size > 0) recordedChunks.push(e.data);
-        };
-
-        mediaRecorder.onstop = () => {
-          const blob = new Blob(recordedChunks, { type: 'video/webm' });
-          blob.arrayBuffer().then((buffer) => {
-            fs.mkdirSync(path.dirname(currentChunkPath), { recursive: true });
-            fs.writeFileSync(currentChunkPath, Buffer.from(buffer));
-            ipcRenderer.send('capture-saved', currentChunkPath);
-            stream.getTracks().forEach((t) => t.stop());
-          });
-        };
-
-        mediaRecorder.start(1000); // collect data every 1s
-        recordingIndicator.style.display = 'flex';
-      } catch (err) {
-        ipcRenderer.send('capture-error', err.message);
-      }
-    });
-
-    ipcRenderer.on('stop-capture', () => {
-      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-        recordingIndicator.style.display = 'none';
-      }
-    });
   </script>
 </body>
 </html>

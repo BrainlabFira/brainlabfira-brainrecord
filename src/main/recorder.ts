@@ -29,34 +29,36 @@ export interface RecordingConfig {
   crf: number;          // 18=high quality, 28=medium, 35=low
   chunkDurationSec: number;
   captureAudio: boolean;
+  // Fracción de la resolución nativa a la que se captura. 0.75 mantiene el
+  // texto legible sin inflar el tamaño; 1 = nativa, 0.5 = la mitad.
+  // Ahora es configurable desde el dashboard (antes era una constante).
+  resolutionScale: number;
 }
-
-// Capture at this fraction of the native screen resolution. 0.75 keeps text
-// legible without inflating file size; 1.0 = native, 0.5 = half.
-const RESOLUTION_SCALE = 0.75;
 
 const DEFAULT_CONFIG: RecordingConfig = {
   fps: 5,
-  // width/height are placeholders — detectScreenResolution() overrides them at
-  // startup with the primary display's native resolution * RESOLUTION_SCALE.
+  // width/height son placeholders — applyResolutionScale() los sobrescribe al
+  // arrancar con la resolución real de la pantalla por resolutionScale.
   width: 1920,
   height: 1080,
   crf: 26,
   chunkDurationSec: 600, // 10 minutes
   captureAudio: true, // audio del sistema (output) — para grabar meetings
+  resolutionScale: 0.75,
 };
 
-// Detect the primary display resolution and set capture size to RESOLUTION_SCALE
-// of it. Must run after app is ready (screen API not available before then).
-// Dimensions are forced even (required by H.264).
-export function detectScreenResolution(): void {
+// Recalcula width/height a partir de la pantalla primaria y resolutionScale.
+// Debe correr con la app ya lista (la API screen no existe antes).
+// Las dimensiones se fuerzan pares, que es lo que exige H.264.
+export function applyResolutionScale(): void {
   try {
     const { width, height } = screen.getPrimaryDisplay().size;
-    const scaledW = Math.round((width * RESOLUTION_SCALE) / 2) * 2;
-    const scaledH = Math.round((height * RESOLUTION_SCALE) / 2) * 2;
+    const scale = config.resolutionScale;
+    const scaledW = Math.round((width * scale) / 2) * 2;
+    const scaledH = Math.round((height * scale) / 2) * 2;
     config.width = scaledW;
     config.height = scaledH;
-    log(`[recorder] Resolución detectada: ${width}x${height} → captura a ${scaledW}x${scaledH} (${RESOLUTION_SCALE * 100}%)`);
+    log(`[recorder] Pantalla ${width}x${height} → captura a ${scaledW}x${scaledH} (${Math.round(scale * 100)}%)`);
   } catch (err) {
     log('[recorder] No se pudo detectar resolución, usando default:', err);
   }
@@ -117,7 +119,15 @@ function emitStatus(): void {
 const TEMP_DIR = path.join(os.tmpdir(), 'timesheet-chunks');
 
 export function setRecordingConfig(partial: Partial<RecordingConfig>): void {
+  const scaleChanged =
+    partial.resolutionScale !== undefined &&
+    partial.resolutionScale !== config.resolutionScale;
+
   config = { ...config, ...partial };
+
+  // Cambiar la escala no sirve de nada por sí solo: lo que la captura usa son
+  // width/height, así que hay que recalcularlos desde la pantalla.
+  if (scaleChanged) applyResolutionScale();
 }
 
 export function getRecordingConfig(): RecordingConfig {
@@ -316,8 +326,8 @@ function waitForFile(filePath: string, timeoutMs: number): Promise<void> {
 
 // Called once from index.ts after app is ready
 export function initRecorderIPC(): void {
-  // Detect screen resolution now that the screen API is available
-  detectScreenResolution();
+  // Calcular width/height ahora que la API screen ya está disponible
+  applyResolutionScale();
 
   // desktopCapturer only works in the main process (Electron 17+).
   // The renderer requests the screen source id through this handler.
