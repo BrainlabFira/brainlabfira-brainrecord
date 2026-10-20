@@ -263,12 +263,38 @@
       background-clip: content-box;
     }
 
+    /* En Grabación no scrollea la vista: todo cabe y es el historial el que
+       scrollea por dentro. Calidad y Atajos sí usan el scroll del body. */
+    .body.no-scroll { overflow-y: hidden; }
+
     .tabpanel { display: none; flex-direction: column; gap: 14px; }
     .tabpanel.active { display: flex; }
 
-    /* Grabación ocupa todo el ancho; subida e historial van debajo, a dos columnas. */
-    .hero { padding: 20px 22px; }
-    .duo { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+    /* La pestaña de grabación llena exactamente la ventana: sin esto los dos
+       paneles de abajo acababan a media altura y quedaba un hueco muerto.
+       Es height y no min-height para que la fila pueda acotarse y el historial
+       largo scrollee dentro de su panel en vez de desbordar la vista. */
+    .tabpanel[data-panel="rec"] { height: 100%; }
+
+    /* Grabación ocupa todo el ancho; subida e historial van debajo, a dos
+       columnas, estirándose para ocupar el alto restante. */
+    .hero { padding: 20px 22px; flex-shrink: 0; }
+    .duo {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      flex: 1;
+      min-height: 190px;
+    }
+    /* Los paneles se estiran a la misma altura y acotan su contenido: sin
+       min-height:0 el historial largo empujaría el panel hacia abajo y
+       desbordaría la ventana en vez de scrollear por dentro. */
+    .duo > .panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
 
     .panel-intro {
       font-size: 11.5px;
@@ -357,8 +383,13 @@
       font-size: 11.5px; color: rgba(255, 255, 255, 0.4); margin-top: 7px;
     }
 
-    /* VU del audio */
-    .audio-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+    /* VU del audio: se apoya en la parte baja del panel, para que el bloque
+       ocupe todo el alto en vez de dejar un hueco muerto debajo. */
+    .audio-row {
+      display: flex; align-items: center; gap: 10px;
+      margin-top: auto;
+      padding-top: 16px;
+    }
     .audio-row .cap { font-size: 11.5px; color: rgba(255,255,255,0.4); flex-shrink: 0; }
     .vu { display: flex; align-items: flex-end; gap: 2px; height: 16px; flex: 1; }
     .vu span {
@@ -525,9 +556,15 @@
     }
 
     /* ── Historial ── */
-    /* El historial crece con la sesión; a partir de cierto punto scrollea
-       dentro de su panel en vez de estirar la vista entera. */
-    #history { max-height: 168px; overflow-y: auto; }
+    /* El historial ocupa el alto del panel y scrollea dentro cuando se llena,
+       en vez de estirar la vista entera. */
+    #history {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
     #history::-webkit-scrollbar { width: 5px; }
     #history::-webkit-scrollbar-thumb {
       background: rgba(255, 255, 255, 0.12); border-radius: 3px;
@@ -548,9 +585,17 @@
     .history-item .dur {
       color: rgba(255,255,255,0.45); font-variant-numeric: tabular-nums; flex-shrink: 0;
     }
+    /* Centrado en los dos ejes del hueco disponible, no solo horizontalmente
+       con un padding fijo. */
     .empty {
-      font-size: 11.5px; color: rgba(255, 255, 255, 0.3);
-      text-align: center; padding: 14px 0;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11.5px;
+      color: rgba(255, 255, 255, 0.3);
+      text-align: center;
+      padding: 14px 0;
     }
 
     /* ── Pie: usuario ── */
@@ -674,7 +719,7 @@
       </button>
     </div>
 
-    <div class="body">
+    <div class="body no-scroll">
       <!-- ── TAB: Grabación ── -->
       <div class="tabpanel active" data-panel="rec">
         <div class="panel hero">
@@ -942,6 +987,7 @@
         document.querySelectorAll('.tabpanel').forEach((p) =>
           p.classList.toggle('active', p.dataset.panel === target));
         bodyEl.scrollTop = 0;
+        bodyEl.classList.toggle('no-scroll', target === 'rec');
 
         // Repintar al entrar en Calidad: las etiquetas de carga dependen de la
         // resolución, que puede no estar lista en el primer render.
