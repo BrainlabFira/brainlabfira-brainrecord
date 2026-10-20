@@ -118,6 +118,11 @@ function emitStatus(): void {
 // Temp dir for chunks waiting to be uploaded
 const TEMP_DIR = path.join(os.tmpdir(), 'timesheet-chunks');
 
+// El uploader la necesita para rescatar chunks de sesiones anteriores.
+export function getTempDir(): string {
+  return TEMP_DIR;
+}
+
 export function setRecordingConfig(partial: Partial<RecordingConfig>): void {
   const scaleChanged =
     partial.resolutionScale !== undefined &&

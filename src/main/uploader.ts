@@ -212,3 +212,70 @@ function scheduleRetry(): void {
 export function getPendingCount(): number {
   return queue.length;
 }
+
+// Recupera chunks que quedaron en disco sin subir (corte de luz, cierre
+// forzado, caída de red al final de la jornada). Se llama al arrancar: si no,
+// esos ficheros se quedan en el temporal para siempre y la grabación se pierde
+// aunque el vídeo esté completo.
+//
+// La ruta codifica todo lo necesario, así que se puede reconstruir el job sin
+// guardar estado aparte:
+//   {TEMP_DIR}/{userId}/{fecha}/{recId}/chunk_NNN.mp4
+export function recoverPendingChunks(tempDir: string): number {
+  if (!fs.existsSync(tempDir)) return 0;
+
+  let recovered = 0;
+
+  for (const userId of safeReaddir(tempDir)) {
+    for (const dateStamp of safeReaddir(path.join(tempDir, userId))) {
+      for (const recId of safeReaddir(path.join(tempDir, userId, dateStamp))) {
+        const dir = path.join(tempDir, userId, dateStamp, recId);
+
+        for (const file of safeReaddir(dir)) {
+          const full = path.join(dir, file);
+
+          // Los .webm son material intermedio sin comprimir: su .mp4 o bien ya
+          // existe, o bien el proceso murió a mitad y el webm puede estar
+          // truncado. No se suben.
+          if (!file.endsWith('.mp4')) continue;
+
+          const match = /^chunk_(\d+)\.mp4$/.exec(file);
+          if (!match) continue;
+
+          try {
+            if (fs.statSync(full).size === 0) continue;
+          } catch {
+            continue;
+          }
+
+          queue.push({
+            localPath: full,
+            userId,
+            recId,
+            dateStamp,
+            // El nombre está en base 1 y chunkIndex en base 0.
+            chunkIndex: Number(match[1]) - 1,
+            retries: 0,
+          });
+          recovered++;
+        }
+      }
+    }
+  }
+
+  if (recovered > 0) {
+    log(`[uploader] Recuperados ${recovered} chunk(s) de una sesión anterior`);
+    emitUploadStatus();
+    processQueue();
+  }
+
+  return recovered;
+}
+
+function safeReaddir(dir: string): string[] {
+  try {
+    return fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+}

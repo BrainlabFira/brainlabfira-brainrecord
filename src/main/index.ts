@@ -1,6 +1,6 @@
 import type { BrowserWindow as BW } from 'electron';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { app, BrowserWindow, ipcMain, Notification, globalShortcut, screen, shell } =
+const { app, BrowserWindow, ipcMain, Notification, globalShortcut, screen, shell, dialog } =
   require('electron') as typeof import('electron');
 import path from 'path';
 import { loadEnv } from './env';
@@ -20,12 +20,14 @@ import {
   getRecordingConfig,
   setRecordingConfig,
   getScreenInfo,
+  getTempDir,
   RecordingConfig,
 } from './recorder';
 import {
   onUploadStatusChange,
   getUploadStatus,
   resetUploadCounters,
+  recoverPendingChunks,
 } from './uploader';
 import { loadSession, saveSession, clearSession, SessionData } from './auth';
 import { log, initLogPath } from './logger';
@@ -172,6 +174,17 @@ async function connectWithSession(session: SessionData): Promise<void> {
     currentSession = session;
     updateTrayState('idle');
 
+    // Con la sesión ya validada hay token para subir: rescatamos los chunks
+    // que quedaran en disco de una sesión anterior (cierre forzado, corte de
+    // luz, red caída al final de la jornada).
+    const recovered = recoverPendingChunks(getTempDir());
+    if (recovered > 0) {
+      showNotification(
+        'Brainlabrecord',
+        `Recuperando ${recovered} fragmento(s) de una grabación anterior`
+      );
+    }
+
     // Ya no se suscribe a `fichajes`: la grabación la inicia el empleado.
     // Al validar la sesión, lo único que toca es mostrarle el dashboard.
     loginWindow?.hide();
@@ -227,7 +240,12 @@ async function handleStartRecording(): Promise<void> {
   }
   if (getRecordingStatus().isRecording) return;
 
-  resetUploadCounters();
+  // Solo reiniciar contadores si no hay nada en vuelo: si quedan chunks de
+  // una grabación anterior subiéndose, ponerlos a cero haría parecer que no
+  // hay nada pendiente.
+  if (getUploadStatus().pending + getUploadStatus().uploading === 0) {
+    resetUploadCounters();
+  }
   const recId = await startRecording(String(currentSession.numericUserId), captureWindow!);
   if (!recId) return;
 
@@ -333,6 +351,68 @@ function resizePanel(width: number, height: number): void {
   panelWindow.setBounds({ x, y, width, height });
 }
 
+// Marca que ya hemos hecho la salida ordenada, para que el segundo app.quit()
+// no vuelva a entrar en el mismo camino.
+let quitConfirmed = false;
+
+// Salida ordenada: pregunta, cierra la grabación en curso y espera a que la
+// cola de subida se vacíe antes de dejar morir la app.
+//
+// Se usa el diálogo NATIVO y no el del dashboard a propósito: durante el cierre
+// las ventanas pueden estar ya destruidas, y un diálogo HTML no garantiza que
+// se llegue a ver ni que podamos esperar su respuesta.
+async function gracefulQuit(recording: boolean, pendingTotal: number): Promise<void> {
+  const parts: string[] = [];
+  if (recording) parts.push('Hay una grabación en curso.');
+  if (pendingTotal > 0) parts.push(`Quedan ${pendingTotal} fragmento(s) por subir.`);
+
+  const { response } = await dialog.showMessageBox({
+    type: 'warning',
+    buttons: ['Cancelar', 'Guardar y salir', 'Salir sin guardar'],
+    defaultId: 1,
+    cancelId: 0,
+    title: 'Brainlabrecord',
+    message: '¿Cerrar Brainlabrecord?',
+    detail: `${parts.join(' ')}\n\nSi sales sin guardar se perderá lo grabado desde el último fragmento.`,
+  });
+
+  if (response === 0) return; // cancelar: la app sigue viva
+
+  if (response === 1) {
+    log('[app] Cierre ordenado: guardando grabación y subidas pendientes');
+    if (recording) {
+      await stopRecording();
+      updateTrayState('idle');
+    }
+    // Dar margen a que la cola termine. No es indefinido: si la red está caída
+    // no tiene sentido bloquear la salida para siempre, los chunks quedan en
+    // disco y se reintentan al volver a abrir.
+    await waitForUploads(60_000);
+  } else {
+    log('[app] Cierre forzado por el usuario — se descarta lo no subido');
+  }
+
+  quitConfirmed = true;
+  app.quit();
+}
+
+// Espera a que la cola de subida se vacíe, hasta un máximo.
+function waitForUploads(timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const check = () => {
+      const { pending, uploading } = getUploadStatus();
+      if (pending + uploading === 0) return resolve();
+      if (Date.now() - start > timeoutMs) {
+        log(`[app] Timeout esperando subidas: quedan ${pending + uploading} chunk(s) en disco`);
+        return resolve();
+      }
+      setTimeout(check, 500);
+    };
+    check();
+  });
+}
+
 async function bootstrap(): Promise<void> {
   await app.whenReady();
 
@@ -356,14 +436,20 @@ async function bootstrap(): Promise<void> {
     onOpenDashboard: () => { openDashboard(); },
   });
 
-  // Pendientes al salir: si quedan chunks sin subir y el empleado cierra la
-  // app, se pierden. Avisarlo es barato y evita perder una grabación entera.
+  // Salir con una grabación activa cuesta todo lo grabado desde el último
+  // corte de chunk (hasta 10 min). Interceptamos la salida para cerrar bien la
+  // grabación y vaciar la cola de subida antes de morir.
   app.on('before-quit', (event) => {
+    if (quitConfirmed) return; // segunda pasada: dejar salir
+
+    const recording = getRecordingStatus().isRecording;
     const { pending, uploading } = getUploadStatus();
-    if (pending + uploading > 0) {
-      log(`[app] Saliendo con ${pending + uploading} chunk(s) sin subir`);
-    }
-    void event;
+    const pendingTotal = pending + uploading;
+
+    if (!recording && pendingTotal === 0) return; // nada que salvar
+
+    event.preventDefault();
+    void gracefulQuit(recording, pendingTotal);
   });
 
   app.setLoginItemSettings({ openAtLogin: true, name: 'Brainlabrecord' });
@@ -467,7 +553,9 @@ async function bootstrap(): Promise<void> {
   });
 
   app.on('window-all-closed', () => { /* keep running in tray */ });
-  app.on('before-quit', async () => { await stopRecording(); });
+  // El cierre de la grabación lo gestiona el before-quit de arriba, que SÍ
+  // espera a que termine. El anterior llamaba a stopRecording() sin await y
+  // Electron mataba el proceso antes de que el chunk llegara a escribirse.
   app.on('will-quit', () => { globalShortcut.unregisterAll(); });
 
   const session = await loadSession();
