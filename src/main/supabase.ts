@@ -1,28 +1,15 @@
-import { createClient, SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
+// Este módulo solo gestiona AUTENTICACIÓN: validar la sesión al arrancar y
+// mantener vivo un access_token para firmar las subidas contra el concat-service.
+//
+// Ya NO lee la tabla `fichajes`. Antes la app se suscribía por Realtime y hacía
+// polling cada 30s para arrancar a grabar en cuanto el empleado fichaba. Eso se
+// eliminó: la grabación la inicia el empleado desde el dashboard o con Ctrl+Alt+R,
+// así que la app no necesita saber nada de su presencia.
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { SessionData, saveSession } from './auth';
 import { log } from './logger';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const WebSocket = require('ws');
-
-interface FichajeCallbacks {
-  onFichar: (fichajeId: number) => Promise<void>;
-  onDesfichar: () => Promise<void>;
-}
-
-interface FichajeRow {
-  id: number;
-  user_id: number;
-  start_time: string;
-  end_time: string | null;
-}
 
 let supabase: SupabaseClient | null = null;
-let channel: RealtimeChannel | null = null;
-// Consecutive polls that returned "no open fichaje" while recording was active.
-// We require 2 in a row before stopping, to avoid false stops from a single
-// network glitch / timeout returning null.
-let emptyPollStreak = 0;
-let pollingInterval: NodeJS.Timeout | null = null;
 
 // Guardamos los tokens en memoria porque persistSession:false hace que
 // getSession() devuelva null. El access_token caduca (~1h); lo refrescamos
@@ -72,9 +59,10 @@ export async function initSupabase(session: SessionData): Promise<void> {
   if (!url) throw new Error('SUPABASE_URL no está definida en el .env');
   if (!key) throw new Error('SUPABASE_ANON_KEY no está definida en el .env');
 
+  // Sin `realtime: { transport: WebSocket }`: ya no hay suscripciones Realtime,
+  // así que no hace falta inyectar el WebSocket de `ws` para Node.
   supabase = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
-    realtime: { transport: WebSocket },
   });
 
   currentSession = session;
@@ -156,147 +144,18 @@ export async function getFreshAccessToken(): Promise<string | null> {
   return currentAccessToken;
 }
 
-// numericUserId: the bigint id from the fichajes table (NOT the Supabase auth UUID)
-export function subscribeToFichajes(numericUserId: number, callbacks: FichajeCallbacks): void {
-  if (!supabase) throw new Error('Supabase no inicializado');
-
-  let activeFichajeId: number | null = null;
-
-  channel = supabase
-    .channel(`fichajes-user-${numericUserId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'fichajes',
-        filter: `user_id=eq.${numericUserId}`,
-      },
-      (payload) => {
-        const row = payload.new as FichajeRow;
-        // Only react if no active fichaje already open
-        if (!activeFichajeId) {
-          activeFichajeId = row.id;
-          callbacks.onFichar(row.id);
-        }
-      }
-    )
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'fichajes',
-        filter: `user_id=eq.${numericUserId}`,
-      },
-      (payload) => {
-        const row = payload.new as FichajeRow;
-        if (row.end_time && row.id === activeFichajeId) {
-          activeFichajeId = null;
-          callbacks.onDesfichar();
-        }
-      }
-    )
-    .subscribe((status) => {
-      log('[supabase] Realtime status:', status, '| filtro user_id=', numericUserId);
-      if (status === 'SUBSCRIBED') {
-        // Start polling fallback immediately to catch any already-open fichaje
-        startPollingFallback(
-          numericUserId,
-          callbacks,
-          () => activeFichajeId,
-          (id) => { activeFichajeId = id; }
-        );
-      }
-    });
-}
-
-function startPollingFallback(
-  numericUserId: number,
-  callbacks: FichajeCallbacks,
-  getActiveId: () => number | null,
-  setActiveId: (id: number | null) => void
-): void {
-  if (pollingInterval) clearInterval(pollingInterval);
-
-  // Run immediately on start to detect open fichajes before first Realtime event
-  checkOpenFichaje(numericUserId, callbacks, getActiveId, setActiveId);
-
-  pollingInterval = setInterval(() => {
-    checkOpenFichaje(numericUserId, callbacks, getActiveId, setActiveId);
-  }, 30_000);
-}
-
-async function checkOpenFichaje(
-  numericUserId: number,
-  callbacks: FichajeCallbacks,
-  getActiveId: () => number | null,
-  setActiveId: (id: number | null) => void
-): Promise<void> {
-  if (!supabase) return;
-
-  const { data, error } = await supabase
-    .from('fichajes')
-    .select('id, start_time, end_time')
-    .eq('user_id', numericUserId)
-    .is('end_time', null)
-    .order('start_time', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    console.error('[supabase] Error en polling:', error.message);
-    return;
-  }
-
-  log('[supabase] Polling — fichaje abierto:', data ? `id=${data.id}` : 'ninguno', '| activo actual=', getActiveId(), '| rachaVacia=', emptyPollStreak);
-
-  if (!data) {
-    // No open fichaje in this poll.
-    if (getActiveId() !== null) {
-      // We were recording. Require 2 consecutive empty polls before stopping,
-      // so a single network glitch / timeout returning null doesn't kill recording.
-      emptyPollStreak++;
-      if (emptyPollStreak >= 2) {
-        log('[supabase] Desfichaje confirmado tras 2 polls vacíos — deteniendo grabación');
-        emptyPollStreak = 0;
-        setActiveId(null);
-        callbacks.onDesfichar();
-      } else {
-        log('[supabase] Poll vacío 1/2 mientras grababa — ignorando (posible glitch)');
-      }
-    }
-    return;
-  }
-
-  // Open fichaje found — reset the empty streak
-  emptyPollStreak = 0;
-  if (getActiveId() === null) {
-    setActiveId(data.id);
-    callbacks.onFichar(data.id);
-  }
-}
-
 // Cierra la sesión en memoria. Debe llamarse SIEMPRE que se borre session.enc:
 // si no, un refresco en vuelo (p.ej. una subida pendiente) volvería a escribir el
 // fichero con persistTokens y resucitaría la sesión que acabamos de borrar.
 export function resetSupabaseSession(): void {
-  unsubscribeFromFichajes();
   currentSession = null;
   currentAccessToken = null;
   currentRefreshToken = null;
   accessTokenExpiresAt = 0;
-  emptyPollStreak = 0;
   supabase = null;
 }
 
-export function unsubscribeFromFichajes(): void {
-  if (channel) {
-    channel.unsubscribe();
-    channel = null;
-  }
-  if (pollingInterval) {
-    clearInterval(pollingInterval);
-    pollingInterval = null;
-  }
+// Email del empleado logueado, para mostrarlo en el dashboard.
+export function getCurrentUserEmail(): string | null {
+  return currentSession?.email ?? null;
 }

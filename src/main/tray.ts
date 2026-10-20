@@ -1,7 +1,8 @@
-import type { Tray as TrayType, BrowserWindow as BW, Menu as MenuType } from 'electron';
+import type { Tray as TrayType, Menu as MenuType } from 'electron';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { Tray, Menu, BrowserWindow, app, nativeImage } = require('electron') as typeof import('electron');
+const { Tray, Menu, app, nativeImage } = require('electron') as typeof import('electron');
 import path from 'path';
+import { SHORTCUT_HELP } from './shortcuts';
 
 export type TrayState = 'idle' | 'recording' | 'error' | 'connecting';
 
@@ -9,7 +10,14 @@ const APP_NAME = 'Brainlabrecord';
 
 let tray: TrayType | null = null;
 let currentState: TrayState = 'idle';
-let onLogout: (() => void) | null = null;
+
+export interface TrayCallbacks {
+  onLogout: () => void;
+  onToggleRecording: () => void;
+  onOpenDashboard: () => void;
+}
+
+let callbacks: TrayCallbacks | null = null;
 
 const STATE_LABELS: Record<TrayState, string> = {
   idle: 'Inactivo',
@@ -24,10 +32,27 @@ function getIconPath(state: TrayState): string {
 }
 
 function buildContextMenu(): MenuType {
+  const recording = currentState === 'recording';
+  const toggle = SHORTCUT_HELP.find((s) => s.description.startsWith('Iniciar'));
+  const dash = SHORTCUT_HELP.find((s) => s.description.startsWith('Abrir'));
+
   return Menu.buildFromTemplate([
     {
       label: `Estado: ${STATE_LABELS[currentState]}`,
       enabled: false,
+    },
+    { type: 'separator' },
+    {
+      // Grabar desde la bandeja: el camino más corto cuando el dashboard está
+      // cerrado y el empleado no recuerda el atajo.
+      label: recording ? 'Terminar grabación' : 'Iniciar grabación',
+      accelerator: toggle?.label,
+      click: () => { callbacks?.onToggleRecording(); },
+    },
+    {
+      label: 'Panel de control',
+      accelerator: dash?.label,
+      click: () => { callbacks?.onOpenDashboard(); },
     },
     { type: 'separator' },
     {
@@ -39,7 +64,7 @@ function buildContextMenu(): MenuType {
       // Cerrar sesión: borra la sesión y muestra el login. Para reasignar el PC
       // a otro empleado. El logout es libre (sin contraseña) por decisión de diseño.
       label: 'Cerrar sesión',
-      click: () => { onLogout?.(); },
+      click: () => { callbacks?.onLogout(); },
     },
     {
       label: 'Salir',
@@ -48,17 +73,17 @@ function buildContextMenu(): MenuType {
   ]);
 }
 
-export function initTray(_loginWindow: BW, logoutFn: () => void): void {
-  onLogout = logoutFn;
+export function initTray(cbs: TrayCallbacks): void {
+  callbacks = cbs;
   const icon = nativeImage.createFromPath(getIconPath('idle'));
   tray = new Tray(icon);
 
   tray.setToolTip(`${APP_NAME} — Inactivo`);
   tray.setContextMenu(buildContextMenu());
 
-  tray.on('double-click', () => {
-    // Double-click does nothing by design (background-only app)
-  });
+  // Doble clic abre el dashboard: es lo que un usuario de Windows espera de un
+  // icono de bandeja. Antes no hacía nada (la app no tenía UI que mostrar).
+  tray.on('double-click', () => { callbacks?.onOpenDashboard(); });
 }
 
 export function updateTrayState(state: TrayState): void {
@@ -70,7 +95,7 @@ export function updateTrayState(state: TrayState): void {
   const icon = nativeImage.createFromPath(iconPath);
   tray.setImage(icon);
   tray.setToolTip(`${APP_NAME} — ${STATE_LABELS[state]}`);
-  // Reconstruir el menú para que "Estado:" refleje el estado actual
-  // (antes solo cambiaba el icono; el menú quedaba obsoleto).
+  // Reconstruir el menú para que "Estado:" y la acción de grabar reflejen el
+  // estado actual (antes solo cambiaba el icono; el menú quedaba obsoleto).
   tray.setContextMenu(buildContextMenu());
 }

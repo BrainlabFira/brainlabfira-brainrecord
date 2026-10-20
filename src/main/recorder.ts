@@ -8,6 +8,7 @@ import ffmpegStaticPath from 'ffmpeg-static';
 import ffmpeg from 'fluent-ffmpeg';
 import { queueChunkForUpload } from './uploader';
 import { log } from './logger';
+import { generateRecordingId, localDateStamp } from './session';
 
 // Resuelve la ruta del binario de ffmpeg.
 // - Empaquetado: ffmpeg-static apunta DENTRO del asar (no ejecutable). Usamos la
@@ -63,11 +64,54 @@ export function detectScreenResolution(): void {
 
 let config: RecordingConfig = { ...DEFAULT_CONFIG };
 let isRecording = false;
-let currentFichajeId: string | null = null;
+let currentRecId: string | null = null;
 let currentUserId: string | null = null;
+// Fecha de INICIO de la grabación, fijada una sola vez. Antes cada chunk
+// calculaba su propia fecha, así que una grabación que cruzaba la medianoche
+// repartía sus chunks entre dos carpetas y el concat-service solo encontraba
+// la mitad de cada una.
+let currentDateStamp: string | null = null;
+let startedAtMs = 0;
 let currentChunkIndex = 0;
 let chunkTimer: NodeJS.Timeout | null = null;
 let mainWindow: BW | null = null;
+
+// Suscriptores a los cambios de estado (panel flotante, dashboard, bandeja).
+export interface RecordingStatus {
+  isRecording: boolean;
+  recId: string | null;
+  startedAtMs: number;
+  elapsedSec: number;
+  chunkIndex: number;
+}
+
+type StatusListener = (status: RecordingStatus) => void;
+const statusListeners: StatusListener[] = [];
+
+export function onRecordingStatusChange(fn: StatusListener): void {
+  statusListeners.push(fn);
+}
+
+export function getRecordingStatus(): RecordingStatus {
+  return {
+    isRecording,
+    recId: currentRecId,
+    startedAtMs,
+    elapsedSec: isRecording ? Math.floor((Date.now() - startedAtMs) / 1000) : 0,
+    chunkIndex: currentChunkIndex,
+  };
+}
+
+function emitStatus(): void {
+  const status = getRecordingStatus();
+  for (const fn of statusListeners) {
+    try {
+      fn(status);
+    } catch (err) {
+      log('[recorder] Error en listener de estado:', err);
+    }
+  }
+}
 
 // Temp dir for chunks waiting to be uploaded
 const TEMP_DIR = path.join(os.tmpdir(), 'timesheet-chunks');
@@ -80,23 +124,26 @@ export function getRecordingConfig(): RecordingConfig {
   return { ...config };
 }
 
-export async function startRecording(
-  fichajeId: string,
-  userId: string,
-  win: BW
-): Promise<void> {
-  if (isRecording) return;
+// Inicia una grabación bajo demanda. El id se genera aquí (ya no viene de un
+// fichaje) y devuelve el recId para que la UI pueda mostrarlo.
+export async function startRecording(userId: string, win: BW): Promise<string | null> {
+  if (isRecording) return currentRecId;
 
+  const now = new Date();
   isRecording = true;
-  currentFichajeId = fichajeId;
+  currentRecId = generateRecordingId(now);
+  currentDateStamp = localDateStamp(now);
   currentUserId = userId;
+  startedAtMs = now.getTime();
   currentChunkIndex = 0;
   mainWindow = win;
 
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 
-  log(`[recorder] Iniciando grabación — fichaje ${fichajeId}, userId ${userId}`);
+  log(`[recorder] Iniciando grabación ${currentRecId} — userId ${userId}`);
+  emitStatus();
   await startChunk();
+  return currentRecId;
 }
 
 export async function stopRecording(): Promise<void> {
@@ -111,13 +158,14 @@ export async function stopRecording(): Promise<void> {
 
   // Stop current chunk and upload it
   await stopCurrentChunk();
-  console.log('[recorder] Grabación detenida');
+  log('[recorder] Grabación detenida');
+  emitStatus();
 }
 
 async function startChunk(): Promise<void> {
-  if (!isRecording || !currentFichajeId || !currentUserId) return;
+  if (!isRecording || !currentRecId || !currentUserId) return;
 
-  const chunkPath = getChunkPath(currentUserId, currentFichajeId, currentChunkIndex);
+  const chunkPath = getChunkPath(currentUserId, currentRecId, currentChunkIndex);
   fs.mkdirSync(path.dirname(chunkPath), { recursive: true });
 
   // Ask renderer to start capturing via desktopCapturer
@@ -135,7 +183,7 @@ async function startChunk(): Promise<void> {
 }
 
 async function rotateChunk(): Promise<void> {
-  const finishedPath = getChunkPath(currentUserId!, currentFichajeId!, currentChunkIndex);
+  const finishedPath = getChunkPath(currentUserId!, currentRecId!, currentChunkIndex);
 
   // Tell renderer to stop capture and save the blob
   mainWindow?.webContents.send('stop-capture');
@@ -154,18 +202,20 @@ async function rotateChunk(): Promise<void> {
   queueChunkForUpload({
     localPath: compressedPath,
     userId: currentUserId!,
-    fichajeId: currentFichajeId!,
+    recId: currentRecId!,
+    dateStamp: currentDateStamp!,
     chunkIndex: currentChunkIndex,
   });
 
   currentChunkIndex++;
+  emitStatus();
   await startChunk();
 }
 
 async function stopCurrentChunk(): Promise<void> {
-  if (!currentFichajeId || !currentUserId) return;
+  if (!currentRecId || !currentUserId) return;
 
-  const rawPath = getChunkPath(currentUserId, currentFichajeId, currentChunkIndex);
+  const rawPath = getChunkPath(currentUserId, currentRecId, currentChunkIndex);
 
   mainWindow?.webContents.send('stop-capture');
 
@@ -178,15 +228,18 @@ async function stopCurrentChunk(): Promise<void> {
     queueChunkForUpload({
       localPath: compressedPath,
       userId: currentUserId,
-      fichajeId: currentFichajeId,
+      recId: currentRecId,
+      dateStamp: currentDateStamp!,
       chunkIndex: currentChunkIndex,
     });
   } catch (err) {
     console.error('[recorder] Error al guardar último chunk:', err);
   }
 
-  currentFichajeId = null;
+  currentRecId = null;
   currentUserId = null;
+  currentDateStamp = null;
+  startedAtMs = 0;
   currentChunkIndex = 0;
 }
 
@@ -236,10 +289,11 @@ function compressChunk(inputPath: string, outputPath: string): Promise<void> {
   });
 }
 
-function getChunkPath(userId: string, fichajeId: string, index: number): string {
-  const date = new Date().toISOString().split('T')[0];
+// Usa currentDateStamp (fijado al iniciar), no la fecha de ahora: si no, una
+// grabación que cruza la medianoche partiría sus chunks en dos carpetas.
+function getChunkPath(userId: string, recId: string, index: number): string {
   const paddedIndex = String(index + 1).padStart(3, '0');
-  return path.join(TEMP_DIR, userId, date, fichajeId, `chunk_${paddedIndex}.webm`);
+  return path.join(TEMP_DIR, userId, currentDateStamp!, recId, `chunk_${paddedIndex}.webm`);
 }
 
 function waitForFile(filePath: string, timeoutMs: number): Promise<void> {

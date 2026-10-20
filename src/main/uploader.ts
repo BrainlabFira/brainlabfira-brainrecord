@@ -6,7 +6,8 @@ import { getFreshAccessToken } from './supabase';
 interface ChunkJob {
   localPath: string;
   userId: string;
-  fichajeId: string;
+  recId: string;
+  dateStamp: string;
   chunkIndex: number;
   retries: number;
 }
@@ -16,6 +17,64 @@ const RETRY_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 
 const queue: ChunkJob[] = [];
 let retryTimer: NodeJS.Timeout | null = null;
+let uploadingNow = 0;
+let uploadedTotal = 0;
+let failedTotal = 0;
+
+// Estado agregado de la cola, para el semáforo del panel flotante y el
+// dashboard. 'ok' = todo subido, 'uploading' = hay trabajo en curso,
+// 'failing' = algún chunk ya ha fallado y está esperando reintento.
+export type UploadHealth = 'ok' | 'uploading' | 'failing';
+
+export interface UploadStatus {
+  health: UploadHealth;
+  pending: number;
+  uploading: number;
+  uploaded: number;
+  failed: number;
+}
+
+type UploadListener = (status: UploadStatus) => void;
+const uploadListeners: UploadListener[] = [];
+
+export function onUploadStatusChange(fn: UploadListener): void {
+  uploadListeners.push(fn);
+}
+
+export function getUploadStatus(): UploadStatus {
+  const anyRetrying = queue.some((j) => j.retries > 0);
+  const health: UploadHealth = anyRetrying
+    ? 'failing'
+    : queue.length > 0 || uploadingNow > 0
+      ? 'uploading'
+      : 'ok';
+  return {
+    health,
+    pending: queue.length,
+    uploading: uploadingNow,
+    uploaded: uploadedTotal,
+    failed: failedTotal,
+  };
+}
+
+function emitUploadStatus(): void {
+  const status = getUploadStatus();
+  for (const fn of uploadListeners) {
+    try {
+      fn(status);
+    } catch (err) {
+      log('[uploader] Error en listener de estado:', err);
+    }
+  }
+}
+
+// Al terminar una grabación el contador de subidos debe volver a cero, o el
+// dashboard mostraría acumulado de toda la sesión de la app.
+export function resetUploadCounters(): void {
+  uploadedTotal = 0;
+  failedTotal = 0;
+  emitUploadStatus();
+}
 
 // URL del concat-service que entrega las presigned URLs de subida.
 // La app NO tiene credenciales de MinIO: se autentica con el JWT de Supabase
@@ -27,7 +86,8 @@ function getUploadServiceUrl(): string {
 export interface QueueChunkParams {
   localPath: string;
   userId: string;
-  fichajeId: string;
+  recId: string;
+  dateStamp: string;
   chunkIndex: number;
 }
 
@@ -35,6 +95,7 @@ export function queueChunkForUpload(params: QueueChunkParams): void {
   const job: ChunkJob = { ...params, retries: 0 };
   queue.push(job);
   log(`[uploader] Chunk encolado: ${path.basename(params.localPath)}`);
+  emitUploadStatus();
   processQueue();
 }
 
@@ -44,15 +105,23 @@ async function processQueue(): Promise<void> {
   const failed: ChunkJob[] = [];
 
   for (const job of queue) {
+    uploadingNow++;
+    emitUploadStatus();
     const success = await uploadChunk(job);
-    if (!success) {
+    uploadingNow--;
+
+    if (success) {
+      uploadedTotal++;
+    } else {
       job.retries++;
       if (job.retries < MAX_RETRIES) {
         failed.push(job);
       } else {
+        failedTotal++;
         console.error(`[uploader] Chunk descartado tras ${MAX_RETRIES} intentos: ${job.localPath}`);
       }
     }
+    emitUploadStatus();
   }
 
   // Clear queue and re-add failed jobs
@@ -62,6 +131,7 @@ async function processQueue(): Promise<void> {
   if (queue.length > 0) {
     scheduleRetry();
   }
+  emitUploadStatus();
 }
 
 async function uploadChunk(job: ChunkJob): Promise<boolean> {
@@ -120,10 +190,13 @@ async function uploadChunk(job: ChunkJob): Promise<boolean> {
   }
 }
 
+// La fecha viene del job (fijada al INICIAR la grabación), no de new Date().
+// Antes se calculaba al subir: un chunk encolado a las 23:58 y subido tras un
+// reintento a las 00:05 acababa en la carpeta del día siguiente, separado del
+// resto de la grabación, y el concat-service solo encontraba una parte.
 function buildObjectName(job: ChunkJob): string {
-  const date = new Date().toISOString().split('T')[0];
   const paddedIndex = String(job.chunkIndex + 1).padStart(3, '0');
-  return `${job.userId}/${date}/${job.fichajeId}/chunk_${paddedIndex}.mp4`;
+  return `${job.userId}/${job.dateStamp}/${job.recId}/chunk_${paddedIndex}.mp4`;
 }
 
 function scheduleRetry(): void {
