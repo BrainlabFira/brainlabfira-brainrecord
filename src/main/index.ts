@@ -10,6 +10,7 @@ import {
   InvalidSessionError,
   resetSupabaseSession,
   getCurrentUserEmail,
+  getFreshAccessToken,
 } from './supabase';
 import {
   startRecording,
@@ -535,6 +536,41 @@ async function bootstrap(): Promise<void> {
 
   ipcMain.on('account:open-log', () => {
     void shell.openPath(path.join(app.getPath('userData'), 'timesheet-debug.log'));
+  });
+
+  // ── IPC: biblioteca de grabaciones ──
+  // El concat-service decide qué puede ver cada uno a partir del JWT: aquí solo
+  // reenviamos la respuesta. Ocultar la pestaña en el cliente es cosmético.
+  ipcMain.handle('recordings:list', async (_event, { all }: { all: boolean }) => {
+    const token = await getFreshAccessToken();
+    if (!token) return { error: 'Sin sesión activa' };
+
+    const base = process.env.UPLOAD_SERVICE_URL ?? 'http://192.168.1.175:9210';
+    try {
+      const resp = await fetch(`${base}/recordings${all ? '?all=1' : ''}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) {
+        return { error: `El servidor respondió ${resp.status}` };
+      }
+      return await resp.json();
+    } catch (err) {
+      log('[recordings] No se pudo listar:', err);
+      return { error: 'No se pudo conectar con el servidor de grabaciones' };
+    }
+  });
+
+  // Abre el vídeo concatenado en el navegador. El token va por query porque
+  // una pestaña del navegador no puede enviar cabeceras.
+  ipcMain.handle('recordings:open', async (_event, r: { userId: string; fecha: string; recId: string; download?: boolean }) => {
+    const token = await getFreshAccessToken();
+    if (!token) return false;
+
+    const base = process.env.UPLOAD_SERVICE_URL ?? 'http://192.168.1.175:9210';
+    const params = new URLSearchParams({ token });
+    if (r.download) params.set('download', '1');
+    await shell.openExternal(`${base}/concat/${r.userId}/${r.fecha}/${r.recId}?${params}`);
+    return true;
   });
 
   ipcMain.handle('account:get-autostart', () => app.getLoginItemSettings().openAtLogin);

@@ -303,6 +303,94 @@
       margin: -6px 0 14px;
     }
 
+    /* ── Biblioteca de grabaciones (admin) ── */
+    .tabpanel[data-panel="library"] { height: 100%; }
+    .lib-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+
+    .lib-head {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 14px;
+    }
+    .lib-head h2 { margin-bottom: 0; flex: 1; }
+    .lib-actions { display: flex; align-items: center; gap: 7px; }
+
+    .icon-btn {
+      -webkit-app-region: no-drag;
+      width: 28px; height: 28px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 7px;
+      color: rgba(255, 255, 255, 0.6);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .icon-btn:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+    .icon-btn svg { width: 13px; height: 13px; }
+    .icon-btn.spinning svg { animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .lib-list { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -4px; padding: 0 4px; }
+    .lib-list::-webkit-scrollbar { width: 6px; }
+    .lib-list::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12); border-radius: 3px;
+    }
+
+    .lib-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 9px;
+      margin-bottom: 7px;
+      transition: background 0.13s, border-color 0.13s;
+    }
+    .lib-item:hover { background: rgba(255, 255, 255, 0.04); border-color: rgba(255,255,255,0.12); }
+
+    .lib-info { flex: 1; min-width: 0; }
+    .lib-id {
+      font-size: 12.5px; font-weight: 500;
+      color: rgba(255, 255, 255, 0.88);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .lib-meta {
+      font-size: 10.5px; color: rgba(255, 255, 255, 0.38);
+      margin-top: 3px;
+      font-variant-numeric: tabular-nums;
+    }
+    .lib-user {
+      font-size: 10px; font-weight: 600;
+      background: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.6);
+      border-radius: 5px; padding: 2px 7px;
+      flex-shrink: 0;
+    }
+    .lib-btns { display: flex; gap: 6px; flex-shrink: 0; }
+
+    .lib-btn {
+      -webkit-app-region: no-drag;
+      display: flex; align-items: center; gap: 5px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.13);
+      border-radius: 7px;
+      color: rgba(255, 255, 255, 0.75);
+      font-family: inherit; font-size: 11px;
+      padding: 6px 10px;
+      cursor: pointer;
+      transition: background 0.14s, color 0.14s;
+    }
+    .lib-btn:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+    .lib-btn svg { width: 11px; height: 11px; }
+
+    .lib-error {
+      font-size: 11.5px;
+      color: #fca5a5;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 8px;
+      padding: 11px 13px;
+      line-height: 1.5;
+    }
+
     .panel {
       background: rgba(255, 255, 255, 0.035);
       border: 1px solid rgba(255, 255, 255, 0.07);
@@ -717,6 +805,16 @@
         </svg>
         Atajos
       </button>
+
+      <!-- Solo administradores. Se revela al arrancar si el servidor dice que
+           lo eres; ocultarla aquí es cosmético, el control real está en el
+           concat-service. -->
+      <button class="tab admin-only" data-tab="library" id="tabLibrary" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m10 7 5 3-5 3V7Z"/><rect x="2" y="4" width="20" height="15" rx="2"/>
+        </svg>
+        Biblioteca
+      </button>
     </div>
 
     <div class="body no-scroll">
@@ -866,6 +964,30 @@
         </div>
       </div>
 
+      <!-- ── TAB: Biblioteca (solo admin) ── -->
+      <div class="tabpanel" data-panel="library">
+        <div class="panel lib-panel">
+          <div class="lib-head">
+            <h2>Grabaciones</h2>
+            <div class="lib-actions">
+              <select id="libScope">
+                <option value="all">Todos los usuarios</option>
+                <option value="mine">Solo las mías</option>
+              </select>
+              <button class="icon-btn" id="libRefresh" title="Actualizar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="lib-list" id="libList">
+            <div class="empty">Cargando…</div>
+          </div>
+        </div>
+      </div>
+
       <!-- ── TAB: Atajos ── -->
       <div class="tabpanel" data-panel="shortcuts">
         <div class="panel">
@@ -992,6 +1114,9 @@
         // Repintar al entrar en Calidad: las etiquetas de carga dependen de la
         // resolución, que puede no estar lista en el primer render.
         if (target === 'quality') { annotateProfiles(); updateHelp(); }
+        // La biblioteca se consulta al entrar, no al arrancar: así el dashboard
+        // abre rápido aunque el servidor tarde o esté caído.
+        if (target === 'library') loadLibrary();
       });
     });
 
@@ -1058,6 +1183,94 @@
 
     document.getElementById('closeBtn').addEventListener('click', () => {
       ipcRenderer.send('window-close');
+    });
+
+    // ── Biblioteca de grabaciones (admin) ──
+    const libList = document.getElementById('libList');
+    const libScope = document.getElementById('libScope');
+    const libRefresh = document.getElementById('libRefresh');
+
+    function formatBytes(bytes) {
+      if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+      if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
+      return `${Math.round(bytes / 1024)} KB`;
+    }
+
+    // rec_20261020_123350 → "20/10/2026 12:33". El id ya lleva la fecha y la
+    // hora, así que no hace falta consultar nada más para mostrarlas.
+    function prettyRecId(recId) {
+      const m = /^rec_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/.exec(recId);
+      if (!m) return recId;
+      const [, y, mo, d, h, mi] = m;
+      return `${d}/${mo}/${y} · ${h}:${mi}`;
+    }
+
+    function renderLibrary(payload) {
+      if (payload.error) {
+        libList.innerHTML = `<div class="lib-error">${payload.error}</div>`;
+        return;
+      }
+
+      const list = payload.recordings ?? [];
+      if (list.length === 0) {
+        libList.innerHTML = '<div class="empty">No hay grabaciones</div>';
+        return;
+      }
+
+      const showUser = libScope.value === 'all';
+
+      libList.innerHTML = list.map((r) => `
+        <div class="lib-item">
+          <div class="lib-info">
+            <div class="lib-id">${prettyRecId(r.recId)}</div>
+            <div class="lib-meta">
+              ${r.chunks} fragmento${r.chunks === 1 ? '' : 's'} · ${formatBytes(r.bytes)} · ${r.recId}
+            </div>
+          </div>
+          ${showUser ? `<span class="lib-user">Usuario ${r.userId}</span>` : ''}
+          <div class="lib-btns">
+            <button class="lib-btn" data-act="view"
+                    data-u="${r.userId}" data-f="${r.fecha}" data-r="${r.recId}">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              Ver
+            </button>
+            <button class="lib-btn" data-act="download"
+                    data-u="${r.userId}" data-f="${r.fecha}" data-r="${r.recId}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>
+              </svg>
+              Descargar
+            </button>
+          </div>
+        </div>`).join('');
+    }
+
+    async function loadLibrary() {
+      libRefresh.classList.add('spinning');
+      libList.innerHTML = '<div class="empty">Cargando…</div>';
+      try {
+        const payload = await ipcRenderer.invoke('recordings:list', {
+          all: libScope.value === 'all',
+        });
+        renderLibrary(payload);
+      } finally {
+        libRefresh.classList.remove('spinning');
+      }
+    }
+
+    libRefresh.addEventListener('click', loadLibrary);
+    libScope.addEventListener('change', loadLibrary);
+
+    // Delegación: los botones se crean al pintar la lista.
+    libList.addEventListener('click', (e) => {
+      const btn = e.target.closest('.lib-btn');
+      if (!btn) return;
+      ipcRenderer.invoke('recordings:open', {
+        userId: btn.dataset.u,
+        fecha: btn.dataset.f,
+        recId: btn.dataset.r,
+        download: btn.dataset.act === 'download',
+      });
     });
 
     // ── Menú de cuenta ──
@@ -1394,6 +1607,16 @@
 
       const autostart = await ipcRenderer.invoke('account:get-autostart');
       document.getElementById('autostartCheck').classList.toggle('on', autostart);
+
+      // La pestaña Biblioteca solo se muestra a administradores. Quien manda
+      // es el servidor: aquí solo revelamos o no el botón. Si el servicio no
+      // responde, la pestaña se queda oculta y no pasa nada más.
+      try {
+        const probe = await ipcRenderer.invoke('recordings:list', { all: false });
+        if (probe && probe.isAdmin) {
+          document.getElementById('tabLibrary').hidden = false;
+        }
+      } catch { /* servidor caído: sin pestaña */ }
 
       // Atajos: se pintan desde la misma definición que el main registra, y se
       // marcan los que el sistema rechazó (otra app los tenía cogidos) para que
