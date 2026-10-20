@@ -19,6 +19,7 @@ import {
   onRecordingStatusChange,
   getRecordingConfig,
   setRecordingConfig,
+  getScreenInfo,
   RecordingConfig,
 } from './recorder';
 import {
@@ -102,7 +103,7 @@ function createLoginWindow(): void {
 function createDashboardWindow(): void {
   dashboardWindow = new BrowserWindow({
     width: 760,
-    height: 620,
+    height: 700,
     show: false,
     frame: false,
     transparent: true,
@@ -384,6 +385,7 @@ async function bootstrap(): Promise<void> {
 
   // ── IPC: ajustes ──
   ipcMain.handle('config:get', () => getRecordingConfig());
+  ipcMain.handle('screen:info', () => getScreenInfo());
 
   ipcMain.handle('config:set', (_event, partial: Partial<RecordingConfig>) => {
     // Los ajustes se aplican a la SIGUIENTE grabación, no a la que está en

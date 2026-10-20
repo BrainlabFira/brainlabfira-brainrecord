@@ -134,6 +134,18 @@ export function getRecordingConfig(): RecordingConfig {
   return { ...config };
 }
 
+// Resolución nativa de la pantalla principal. El dashboard la necesita para
+// recomendar un perfil y para avisar cuando una combinación se pasa de frenada:
+// 30 fps es trivial en 1366x768 y una barbaridad en 5120x1440.
+export function getScreenInfo(): { width: number; height: number } {
+  try {
+    const { width, height } = screen.getPrimaryDisplay().size;
+    return { width, height };
+  } catch {
+    return { width: 1920, height: 1080 };
+  }
+}
+
 // Inicia una grabación bajo demanda. El id se genera aquí (ya no viene de un
 // fichaje) y devuelve el recId para que la UI pueda mostrarlo.
 export async function startRecording(userId: string, win: BW): Promise<string | null> {

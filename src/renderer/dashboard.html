@@ -216,6 +216,110 @@
       margin-top: 12px; line-height: 1.45;
     }
 
+    /* ── Perfiles de calidad ── */
+    .profiles { display: flex; flex-direction: column; gap: 6px; }
+
+    .profile {
+      -webkit-app-region: no-drag;
+      display: flex; align-items: flex-start; gap: 9px;
+      padding: 9px 10px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 9px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .profile:hover { background: rgba(255, 255, 255, 0.04); }
+    .profile input { margin: 2px 0 0 0; accent-color: #4ade80; flex-shrink: 0; cursor: pointer; }
+    .profile:has(input:checked) {
+      background: rgba(74, 222, 128, 0.08);
+      border-color: rgba(74, 222, 128, 0.35);
+    }
+
+    .profile-name { font-size: 12.5px; font-weight: 600; }
+    .profile-desc { font-size: 10.5px; color: rgba(255, 255, 255, 0.45); margin-top: 2px; }
+    .profile-specs {
+      font-size: 10px; color: rgba(255, 255, 255, 0.3);
+      margin-top: 3px; font-variant-numeric: tabular-nums;
+    }
+    .tag {
+      font-size: 8.5px; font-weight: 700; letter-spacing: 0.5px;
+      text-transform: uppercase;
+      background: rgba(74, 222, 128, 0.16);
+      color: #4ade80;
+      border-radius: 4px;
+      padding: 2px 5px;
+      margin-left: 4px;
+      vertical-align: 1px;
+    }
+
+    /* ── Bloque avanzado ── */
+    .advanced-toggle {
+      -webkit-app-region: no-drag;
+      width: 100%;
+      display: flex; align-items: center; gap: 6px;
+      background: transparent; border: none;
+      color: rgba(255, 255, 255, 0.45);
+      font-size: 11px; font-family: inherit;
+      cursor: pointer;
+      padding: 9px 0 4px;
+      transition: color 0.15s;
+    }
+    .advanced-toggle:hover { color: rgba(255, 255, 255, 0.75); }
+    .advanced-toggle .chev {
+      display: inline-block;
+      transition: transform 0.18s;
+      font-size: 9px;
+    }
+    .advanced-toggle.open .chev { transform: rotate(90deg); }
+
+    .advanced { display: none; }
+    .advanced.open { display: block; }
+
+    /* Explicación del valor elegido: cambia al mover el desplegable, para que
+       "24 fps" signifique algo sin tener que saber de vídeo. */
+    .help {
+      font-size: 10px;
+      line-height: 1.5;
+      color: rgba(255, 255, 255, 0.38);
+      padding: 0 0 9px 0;
+      margin-top: -5px;
+    }
+    .help.caution { color: rgba(251, 191, 36, 0.75); }
+    .help.warn {
+      color: #fbbf24;
+      background: rgba(251, 191, 36, 0.08);
+      border-left: 2px solid rgba(251, 191, 36, 0.5);
+      padding: 7px 9px;
+      border-radius: 0 6px 6px 0;
+      margin-top: 0;
+      margin-bottom: 9px;
+    }
+
+    /* Etiqueta de carga por perfil, calculada contra la pantalla del equipo. */
+    .load-tag {
+      display: inline-block;
+      font-size: 9px; font-weight: 600;
+      letter-spacing: 0.2px;
+      border-radius: 4px;
+      padding: 1px 5px;
+      margin-left: 6px;
+      vertical-align: 1px;
+    }
+    .load-tag.ok     { background: rgba(74, 222, 128, 0.14); color: rgba(74, 222, 128, 0.9); }
+    .load-tag.medium { background: rgba(251, 191, 36, 0.14); color: rgba(251, 191, 36, 0.9); }
+    .load-tag.heavy  { background: rgba(239, 68, 68, 0.16);  color: rgba(252, 165, 165, 0.95); }
+
+    /* Perfil sugerido para esta pantalla: un borde sutil, sin cambiar cuál
+       viene marcado por defecto. */
+    .profile.suggested { border-color: rgba(255, 255, 255, 0.22); }
+
+    .screen-note {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.32);
+      margin-top: 9px;
+      line-height: 1.45;
+    }
+
     /* ── Atajos ── */
     .shortcut {
       display: flex; align-items: center; justify-content: space-between;
@@ -340,47 +444,105 @@
       <div class="col">
         <div class="panel">
           <h2>Calidad</h2>
-          <div class="setting">
-            <div>
-              <div class="name">Fotogramas</div>
-              <div class="desc">Más fps = más peso</div>
-            </div>
-            <select id="fps">
-              <option value="3">3 fps</option>
-              <option value="5">5 fps</option>
-              <option value="10">10 fps</option>
-              <option value="15">15 fps</option>
-            </select>
+
+          <!-- Perfiles: tres combinaciones que sabemos que funcionan bien.
+               Quien quiera afinar abre "Avanzado". -->
+          <div class="profiles" id="profiles">
+            <label class="profile">
+              <input type="radio" name="profile" value="light" />
+              <div class="profile-body">
+                <div class="profile-name">Ligera</div>
+                <div class="profile-desc">Jornadas largas y poco peso</div>
+                <div class="profile-specs">
+                  3 fps · 50 % · compresión baja
+                  <span class="load-tag"></span>
+                </div>
+              </div>
+            </label>
+            <label class="profile">
+              <input type="radio" name="profile" value="balanced" checked />
+              <div class="profile-body">
+                <div class="profile-name">Equilibrada <span class="tag">por defecto</span></div>
+                <div class="profile-desc">Reuniones y trabajo normal</div>
+                <div class="profile-specs">
+                  5 fps · 75 % · compresión media
+                  <span class="load-tag"></span>
+                </div>
+              </div>
+            </label>
+            <label class="profile">
+              <input type="radio" name="profile" value="high" />
+              <div class="profile-body">
+                <div class="profile-name">Alta</div>
+                <div class="profile-desc">Demos y texto pequeño</div>
+                <div class="profile-specs">
+                  15 fps · 100 % · compresión alta
+                  <span class="load-tag"></span>
+                </div>
+              </div>
+            </label>
           </div>
-          <div class="setting">
-            <div>
-              <div class="name">Resolución</div>
-              <div class="desc">% de la pantalla</div>
-            </div>
-            <select id="scale">
-              <option value="0.5">50 %</option>
-              <option value="0.75">75 %</option>
-              <option value="1">100 %</option>
-            </select>
-          </div>
-          <div class="setting">
-            <div>
-              <div class="name">Compresión</div>
-              <div class="desc">Calidad de imagen</div>
-            </div>
-            <select id="crf">
-              <option value="20">Alta</option>
-              <option value="26">Media</option>
-              <option value="32">Baja</option>
-            </select>
-          </div>
-          <div class="setting">
+
+          <div class="screen-note" id="screenNote"></div>
+
+          <div class="setting" style="margin-top: 4px;">
             <div>
               <div class="name">Audio del sistema</div>
-              <div class="desc">Graba lo que suena</div>
+              <div class="desc">Graba lo que suena por los altavoces</div>
             </div>
             <div class="toggle on" id="audioToggle"></div>
           </div>
+
+          <!-- Avanzado: los controles sueltos, plegados por defecto. -->
+          <button class="advanced-toggle" id="advancedToggle">
+            <span class="chev">&#9656;</span> Ajustes avanzados
+          </button>
+
+          <div class="advanced" id="advanced">
+            <div class="setting">
+              <div>
+                <div class="name">Fotogramas</div>
+                <div class="desc">Fluidez de la imagen</div>
+              </div>
+              <select id="fps">
+                <option value="1">1 fps</option>
+                <option value="3">3 fps</option>
+                <option value="5">5 fps</option>
+                <option value="10">10 fps</option>
+                <option value="15">15 fps</option>
+                <option value="24">24 fps</option>
+                <option value="30">30 fps</option>
+              </select>
+            </div>
+            <div class="help" id="fpsHelp"></div>
+
+            <div class="setting">
+              <div>
+                <div class="name">Resolución</div>
+                <div class="desc">% de la pantalla</div>
+              </div>
+              <select id="scale">
+                <option value="0.5">50 %</option>
+                <option value="0.75">75 %</option>
+                <option value="1">100 %</option>
+              </select>
+            </div>
+            <div class="help" id="scaleHelp"></div>
+
+            <div class="setting">
+              <div>
+                <div class="name">Compresión</div>
+                <div class="desc">Calidad de imagen</div>
+              </div>
+              <select id="crf">
+                <option value="20">Alta</option>
+                <option value="26">Media</option>
+                <option value="32">Baja</option>
+              </select>
+            </div>
+            <div class="help" id="crfHelp"></div>
+          </div>
+
           <div class="settings-note">
             Los cambios se aplican a la siguiente grabación, no a la que esté en curso.
           </div>
@@ -550,30 +712,198 @@
     ipcRenderer.on('config:changed', (_e, config) => { applyConfig(config); });
 
     // ── Ajustes ──
-    // RESOLUTION_SCALE no se guarda en la config (el main calcula width/height
-    // desde la pantalla), así que el desplegable solo refleja lo que el usuario
-    // elige en esta ventana y se envía como escala.
     const fpsSel = document.getElementById('fps');
     const scaleSel = document.getElementById('scale');
     const crfSel = document.getElementById('crf');
     const audioToggle = document.getElementById('audioToggle');
+    const advancedBox = document.getElementById('advanced');
+    const advancedBtn = document.getElementById('advancedToggle');
+
+    // Los tres perfiles. 'balanced' es exactamente la configuración con la que
+    // la app venía funcionando, para no cambiar el comportamiento por defecto.
+    const PROFILES = {
+      light:    { fps: 3,  resolutionScale: 0.5,  crf: 32 },
+      balanced: { fps: 5,  resolutionScale: 0.75, crf: 26 },
+      high:     { fps: 15, resolutionScale: 1,    crf: 20 },
+    };
+
+    // Qué significa cada valor, en lenguaje de quien va a usar esto. Un
+    // desplegable que dice "24 fps" no ayuda a decidir; esto sí.
+    const FPS_HELP = {
+      1:  'Una imagen por segundo. Solo para dejar constancia de que se trabajó; el movimiento no se sigue.',
+      3:  'Muy ligero. Suficiente para documentos y código, donde la pantalla casi no cambia.',
+      5:  'Lo habitual para reuniones y trabajo de oficina. Buen equilibrio entre claridad y peso.',
+      10: 'Se nota más fluido al desplazarse por una página o cambiar de ventana.',
+      15: 'Movimiento suave. Recomendado si enseñas demos o navegas mucho durante la grabación.',
+      24: 'Fluidez de cine. Para grabar vídeo reproducido en pantalla. El archivo crece bastante.',
+      30: 'Máxima fluidez. Pesa mucho y consume más memoria: úsalo solo en grabaciones cortas.',
+    };
+
+    const SCALE_HELP = {
+      '0.5':  'Mitad de la resolución. El texto pequeño puede costar de leer, pero ocupa muy poco.',
+      '0.75': 'Tres cuartos. El texto se lee bien y el archivo se mantiene contenido.',
+      '1':    'Resolución completa de la pantalla. Nitidez máxima y el archivo más grande.',
+    };
+
+    const CRF_HELP = {
+      20: 'Imagen muy nítida, archivos grandes. Para cuando hay que leer detalle fino.',
+      26: 'Calidad suficiente para casi todo, con un tamaño razonable.',
+      32: 'Prioriza el espacio. Puede verse algo borroso en texto pequeño.',
+    };
+
+    // Resolución real de esta pantalla. Se rellena al arrancar; hasta entonces
+    // un valor razonable para no romper los cálculos.
+    let screenInfo = { width: 1920, height: 1080 };
+
+    // La carga no la decide el fps ni la resolución por separado, sino los
+    // PÍXELES POR SEGUNDO que el MediaRecorder tiene que digerir:
+    //   ancho × alto × escala² × fps
+    // 30 fps son triviales en 1366x768 y brutales en 5120x1440. Por eso el
+    // aviso se calcula contra la pantalla de cada equipo, no con un umbral fijo.
+    function megapixelsPerSecond(fps, scale) {
+      const w = screenInfo.width * scale;
+      const h = screenInfo.height * scale;
+      return (w * h * fps) / 1_000_000;
+    }
+
+    // Umbrales en Mpx/s. La referencia es la configuración que lleva meses
+    // funcionando (1920x1080 al 75 % y 5 fps ≈ 5,8 Mpx/s), con margen:
+    //   < 60   cómodo
+    //   60-120 exigente pero viable
+    //   > 120  riesgo real de llenar memoria en chunks de 10 min
+    const LOAD_OK = 60;
+    const LOAD_HEAVY = 120;
+
+    function loadLevel(fps, scale) {
+      const mpps = megapixelsPerSecond(fps, scale);
+      if (mpps > LOAD_HEAVY) return 'heavy';
+      if (mpps > LOAD_OK) return 'medium';
+      return 'ok';
+    }
+
+    // Perfil recomendado para ESTA pantalla: el más alto que se queda en zona
+    // cómoda. En un portátil normal sale 'high'; en un ultrapanorámico como
+    // 5120x1440, 'balanced'.
+    function recommendedProfile() {
+      const order = ['high', 'balanced', 'light'];
+      for (const key of order) {
+        const p = PROFILES[key];
+        if (loadLevel(p.fps, p.resolutionScale) === 'ok') return key;
+      }
+      return 'light';
+    }
+
+    function updateHelp() {
+      const fps = Number(fpsSel.value);
+      const scale = Number(scaleSel.value);
+      const crf = Number(crfSel.value);
+
+      const fpsHelp = document.getElementById('fpsHelp');
+      const level = loadLevel(fps, scale);
+      const mpps = megapixelsPerSecond(fps, scale);
+      const base = FPS_HELP[fps] ?? '';
+
+      if (level === 'heavy') {
+        fpsHelp.textContent = `${base} Aviso: a ${fps} fps y ${Math.round(scale * 100)} % `
+          + `sobre tu pantalla de ${screenInfo.width}x${screenInfo.height} son `
+          + `${mpps.toFixed(0)} Mpx/s. Puede llenar la memoria y cortar la grabación. `
+          + 'Baja los fotogramas o la resolución.';
+        fpsHelp.className = 'help warn';
+      } else if (level === 'medium') {
+        fpsHelp.textContent = `${base} En tu pantalla de ${screenInfo.width}x${screenInfo.height} `
+          + 'esta combinación es exigente: va bien en grabaciones cortas, '
+          + 'pero genera archivos grandes.';
+        fpsHelp.className = 'help caution';
+      } else {
+        fpsHelp.textContent = base;
+        fpsHelp.className = 'help';
+      }
+
+      document.getElementById('scaleHelp').textContent = SCALE_HELP[String(scale)] ?? '';
+      document.getElementById('crfHelp').textContent = CRF_HELP[crf] ?? '';
+    }
+
+    // Marca cada perfil con la carga que supone en esta pantalla y señala el
+    // recomendado. La predeterminada sigue siendo Equilibrada en todos los
+    // equipos: lo que cambia es el consejo, no lo que viene activado.
+    function annotateProfiles() {
+      const best = recommendedProfile();
+      document.querySelectorAll('.profile').forEach((el) => {
+        const key = el.querySelector('input').value;
+        const p = PROFILES[key];
+        const level = loadLevel(p.fps, p.resolutionScale);
+        const tagBox = el.querySelector('.load-tag');
+        if (!tagBox) return;
+
+        tagBox.className = `load-tag ${level}`;
+        tagBox.textContent =
+          level === 'heavy' ? 'pesada para tu pantalla'
+          : level === 'medium' ? 'exigente'
+          : 'va fluida';
+
+        el.classList.toggle('suggested', key === best);
+      });
+
+      const note = document.getElementById('screenNote');
+      if (note) {
+        note.textContent = `Pantalla detectada: ${screenInfo.width} × ${screenInfo.height}`
+          + (best !== 'balanced'
+            ? ` · para este equipo encaja mejor "${PROFILE_NAMES[best]}"`
+            : '');
+      }
+    }
+
+    const PROFILE_NAMES = { light: 'Ligera', balanced: 'Equilibrada', high: 'Alta' };
+
+    // Marca el perfil que coincide con los valores actuales. Si el empleado ha
+    // tocado Avanzado y ya no coincide ninguno, no marca nada (la combinación
+    // es suya y hay que respetarla).
+    function syncProfileSelection(config) {
+      const scale = config.resolutionScale ?? 0.75;
+      const match = Object.entries(PROFILES).find(([, p]) =>
+        p.fps === config.fps && p.resolutionScale === scale && p.crf === config.crf
+      );
+      document.querySelectorAll('input[name="profile"]').forEach((radio) => {
+        radio.checked = Boolean(match) && radio.value === match[0];
+      });
+    }
 
     function applyConfig(config) {
       fpsSel.value = String(config.fps);
       crfSel.value = String(config.crf);
       scaleSel.value = String(config.resolutionScale ?? 0.75);
       audioToggle.classList.toggle('on', config.captureAudio);
+      syncProfileSelection(config);
+      updateHelp();
     }
 
-    fpsSel.addEventListener('change', () => {
-      ipcRenderer.invoke('config:set', { fps: Number(fpsSel.value) });
+    // Elegir un perfil manda los tres valores de golpe.
+    document.querySelectorAll('input[name="profile"]').forEach((radio) => {
+      radio.addEventListener('change', async () => {
+        if (!radio.checked) return;
+        const updated = await ipcRenderer.invoke('config:set', PROFILES[radio.value]);
+        applyConfig(updated);
+      });
     });
-    crfSel.addEventListener('change', () => {
-      ipcRenderer.invoke('config:set', { crf: Number(crfSel.value) });
+
+    advancedBtn.addEventListener('click', () => {
+      const open = advancedBox.classList.toggle('open');
+      advancedBtn.classList.toggle('open', open);
     });
-    scaleSel.addEventListener('change', () => {
-      ipcRenderer.invoke('config:set', { resolutionScale: Number(scaleSel.value) });
-    });
+
+    // Los controles sueltos actualizan la ayuda y pueden dejar la selección sin
+    // perfil, si la combinación deja de coincidir con ninguno.
+    async function pushSetting(partial) {
+      const updated = await ipcRenderer.invoke('config:set', partial);
+      syncProfileSelection(updated);
+      updateHelp();
+    }
+
+    fpsSel.addEventListener('change', () => pushSetting({ fps: Number(fpsSel.value) }));
+    crfSel.addEventListener('change', () => pushSetting({ crf: Number(crfSel.value) }));
+    scaleSel.addEventListener('change', () =>
+      pushSetting({ resolutionScale: Number(scaleSel.value) }));
+
     audioToggle.addEventListener('click', () => {
       const next = !audioToggle.classList.contains('on');
       audioToggle.classList.toggle('on', next);
@@ -582,13 +912,19 @@
 
     // ── Arranque ──
     (async () => {
-      const [status, upload, config, session, shortcutInfo] = await Promise.all([
+      const [status, upload, config, session, shortcutInfo, screen] = await Promise.all([
         ipcRenderer.invoke('recording:status'),
         ipcRenderer.invoke('upload:status'),
         ipcRenderer.invoke('config:get'),
         ipcRenderer.invoke('session:info'),
         ipcRenderer.invoke('shortcuts:info'),
+        ipcRenderer.invoke('screen:info'),
       ]);
+
+      // Antes de pintar nada: los avisos y las etiquetas se calculan contra
+      // esta resolución.
+      screenInfo = screen;
+      annotateProfiles();
 
       isRecording = status.isRecording;
       startedAtMs = status.startedAtMs;
