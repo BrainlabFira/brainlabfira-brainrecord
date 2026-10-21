@@ -34,6 +34,15 @@ import {
   recoverPendingChunks,
   onChunkDropped,
 } from './uploader';
+import {
+  initUpdater,
+  checkForUpdates,
+  getUpdateStatus,
+  onUpdateStatusChange,
+  setBusyCheck,
+  setTokenProvider,
+  installNow,
+} from './updater';
 import { loadSession, saveSession, clearSession, SessionData } from './auth';
 import { log, initLogPath } from './logger';
 import { SHORTCUTS } from './shortcuts';
@@ -68,6 +77,7 @@ let panelWindow: BW | null = null;
 let playerWindow: BW | null = null;
 
 let currentSession: SessionData | null = null;
+let updateTimer: NodeJS.Timeout | null = null;
 // Atajos que el sistema rechazó porque otra app ya los tenía registrados.
 // Se muestran en el dashboard: si no, el empleado pulsa y no pasa nada.
 const failedShortcuts: string[] = [];
@@ -255,6 +265,13 @@ async function connectWithSession(session: SessionData): Promise<void> {
     // Con la sesión ya validada hay token para subir: rescatamos los chunks
     // que quedaran en disco de una sesión anterior (cierre forzado, corte de
     // luz, red caída al final de la jornada).
+    // Con sesión válida ya hay token para pedir el manifiesto. Se comprueba al
+    // entrar y luego cada 4 horas: la app puede estar días abierta.
+    void checkForUpdates();
+    if (!updateTimer) {
+      updateTimer = setInterval(() => { void checkForUpdates(); }, 4 * 60 * 60 * 1000);
+    }
+
     const recovered = recoverPendingChunks(getTempDir());
     if (recovered > 0) {
       showNotification(
@@ -569,6 +586,17 @@ async function bootstrap(): Promise<void> {
   onRecordingStatusChange((status) => { broadcast('recording:status', status); });
   onUploadStatusChange((status) => { broadcast('upload:status', status); });
 
+  // ── Actualizaciones ──
+  // La instalación reinicia la app, así que nunca debe ocurrir con una
+  // grabación en curso ni con chunks sin subir.
+  setBusyCheck(() => {
+    const { pending, uploading } = getUploadStatus();
+    return getRecordingStatus().isRecording || pending + uploading > 0;
+  });
+  setTokenProvider(() => getFreshAccessToken());
+  onUpdateStatusChange((status) => { broadcast('update:status', status); });
+  await initUpdater();
+
   // La captura no arrancó: se aborta en vez de seguir marcando "Grabando"
   // sobre una grabación que no existe.
   onCaptureFailure((message) => {
@@ -741,6 +769,11 @@ async function bootstrap(): Promise<void> {
     await shell.openExternal(`${base}/concat/${r.userId}/${r.fecha}/${r.recId}?${params}`);
     return true;
   });
+
+  // ── IPC: actualizaciones ──
+  ipcMain.handle('update:status', () => getUpdateStatus());
+  ipcMain.handle('update:check', () => checkForUpdates());
+  ipcMain.handle('update:install', () => installNow());
 
   ipcMain.handle('account:get-autostart', () => app.getLoginItemSettings().openAtLogin);
 

@@ -466,6 +466,60 @@
        scrollea por dentro. Calidad y Atajos sí usan el scroll del body. */
     .body.no-scroll { overflow-y: hidden; }
 
+    /* Punto en la pestaña cuando hay una actualización esperando */
+    .tab-badge {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #4ade80;
+      margin-left: 2px;
+      flex-shrink: 0;
+    }
+
+    /* ── Actualizaciones ── */
+    .upd-state { display: flex; align-items: center; gap: 13px; }
+    .upd-icon {
+      width: 38px; height: 38px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.5);
+      flex-shrink: 0;
+      transition: background 0.2s, color 0.2s;
+    }
+    .upd-icon svg { width: 17px; height: 17px; }
+    .upd-icon.ok      { background: rgba(74, 222, 128, 0.14); color: #4ade80; }
+    .upd-icon.pending { background: rgba(251, 191, 36, 0.14); color: #fbbf24; }
+    .upd-icon.error   { background: rgba(239, 68, 68, 0.14);  color: #fca5a5; }
+    .upd-icon.busy svg { animation: spin 1.1s linear infinite; }
+
+    .upd-text { flex: 1; min-width: 0; }
+    .upd-title { font-size: 14px; font-weight: 600; }
+    .upd-sub {
+      font-size: 11.5px; color: rgba(255, 255, 255, 0.42); margin-top: 2px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .upd-progress { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+    .upd-bar {
+      flex: 1; height: 5px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .upd-fill {
+      height: 100%; width: 0%;
+      background: #4ade80;
+      border-radius: 3px;
+      transition: width 0.3s;
+    }
+    .upd-pct {
+      font-size: 11px; color: rgba(255, 255, 255, 0.5);
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0; min-width: 34px; text-align: right;
+    }
+
+    #updInstall { margin-top: 16px; }
+
     .tabpanel { display: none; flex-direction: column; gap: 14px; }
     .tabpanel.active { display: flex; }
 
@@ -1038,6 +1092,14 @@
         Atajos
       </button>
 
+      <button class="tab" data-tab="updates" id="tabUpdates">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>
+        </svg>
+        Actualizaciones
+        <span class="tab-badge" id="updateBadge" hidden></span>
+      </button>
+
       <!-- Solo administradores. Se revela al arrancar si el servidor dice que
            lo eres; ocultarla aquí es cosmético, el control real está en el
            concat-service. -->
@@ -1201,6 +1263,48 @@
           <div class="settings-note">
             Los cambios se aplican a la siguiente grabación, no a la que esté en curso.
           </div>
+        </div>
+      </div>
+
+      <!-- ── TAB: Actualizaciones ── -->
+      <div class="tabpanel" data-panel="updates">
+        <div class="panel">
+          <h2>Versión</h2>
+          <div class="upd-state">
+            <div class="upd-icon" id="updIcon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 6 9 17l-5-5"/>
+              </svg>
+            </div>
+            <div class="upd-text">
+              <div class="upd-title" id="updTitle">Comprobando…</div>
+              <div class="upd-sub" id="updSub">Versión instalada 1.0.0</div>
+            </div>
+            <button class="lib-btn" id="updCheck">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>
+              </svg>
+              Buscar
+            </button>
+          </div>
+
+          <div class="upd-progress" id="updProgress" hidden>
+            <div class="upd-bar"><div class="upd-fill" id="updFill"></div></div>
+            <span class="upd-pct" id="updPct">0 %</span>
+          </div>
+
+          <button class="action" id="updInstall" hidden>Reiniciar e instalar</button>
+          <div class="help" id="updNote"></div>
+        </div>
+
+        <div class="panel">
+          <h2>Cómo funciona</h2>
+          <p class="panel-intro" style="margin-bottom:0">
+            La app busca actualizaciones al iniciar sesión y cada pocas horas.
+            Cuando hay una disponible se descarga sola en segundo plano y se
+            instala en cuanto no haya ninguna grabación en curso ni fragmentos
+            pendientes de subir: una actualización nunca interrumpe una grabación.
+          </p>
         </div>
       </div>
 
@@ -1816,6 +1920,83 @@
       }
     });
 
+    // ── Actualizaciones ──
+    function renderUpdate(s) {
+      const icon = document.getElementById('updIcon');
+      const title = document.getElementById('updTitle');
+      const sub = document.getElementById('updSub');
+      const note = document.getElementById('updNote');
+      const progress = document.getElementById('updProgress');
+      const install = document.getElementById('updInstall');
+      const badge = document.getElementById('updateBadge');
+      const checkBtn = document.getElementById('updCheck');
+
+      icon.className = 'upd-icon';
+      progress.hidden = true;
+      install.hidden = true;
+      badge.hidden = true;
+      note.textContent = '';
+      note.className = 'help';
+      checkBtn.disabled = false;
+      sub.textContent = `Versión instalada ${s.currentVersion}`;
+
+      switch (s.state) {
+        case 'checking':
+          icon.classList.add('busy');
+          title.textContent = 'Buscando actualizaciones…';
+          checkBtn.disabled = true;
+          break;
+
+        case 'latest':
+          icon.classList.add('ok');
+          title.textContent = 'Todo al día';
+          break;
+
+        case 'available':
+        case 'downloading':
+          icon.classList.add('pending', 'busy');
+          title.textContent = `Descargando la versión ${s.newVersion}`;
+          progress.hidden = false;
+          document.getElementById('updFill').style.width = `${s.progressPercent}%`;
+          document.getElementById('updPct').textContent = `${s.progressPercent} %`;
+          checkBtn.disabled = true;
+          break;
+
+        case 'ready':
+          icon.classList.add('pending');
+          title.textContent = `Versión ${s.newVersion} lista para instalar`;
+          install.hidden = false;
+          badge.hidden = false;
+          note.textContent = s.waitingForIdle
+            ? 'Se instalará automáticamente en cuanto termine la grabación y se '
+              + 'suban los fragmentos pendientes.'
+            : 'Se instalará automáticamente. La app se reiniciará.';
+          if (s.waitingForIdle) note.className = 'help caution';
+          break;
+
+        case 'error':
+          icon.classList.add('error');
+          title.textContent = 'No se pudo comprobar';
+          note.textContent = s.error ?? 'Error desconocido';
+          note.className = 'help warn';
+          break;
+
+        default:
+          title.textContent = 'Sin comprobar';
+      }
+    }
+
+    ipcRenderer.on('update:status', (_e, s) => renderUpdate(s));
+
+    document.getElementById('updCheck').addEventListener('click', async () => {
+      await ipcRenderer.invoke('update:check');
+      renderUpdate(await ipcRenderer.invoke('update:status'));
+    });
+
+    document.getElementById('updInstall').addEventListener('click', () => {
+      ipcRenderer.invoke('update:install');
+    });
+
     // ── Menú de cuenta ──
     const accountMenu = document.getElementById('accountMenu');
     const avatarBtn = document.getElementById('avatarBtn');
@@ -2177,6 +2358,8 @@
       document.getElementById('menuEmail').textContent = session.email ?? '—';
       document.getElementById('menuUserId').textContent =
         session.numericUserId != null ? `Usuario #${session.numericUserId}` : 'Sin identificar';
+
+      renderUpdate(await ipcRenderer.invoke('update:status'));
 
       const autostart = await ipcRenderer.invoke('account:get-autostart');
       document.getElementById('autostartCheck').classList.toggle('on', autostart);

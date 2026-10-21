@@ -36,4 +36,13 @@ extraResources:
   - from: node_modules/ffmpeg-static/ffmpeg.exe
     to: ffmpeg/ffmpeg.exe
 
-publish: null
+# Genera latest.yml junto al instalador, que es lo que la app consulta para
+# saber si hay versión nueva. La URL apunta al concat-service, que sirve los
+# ficheros autenticados desde MinIO (ver src/main/updater.ts).
+#
+# Los ficheros NO se suben solos: `npm run publish` los copia al bucket.
+publish:
+  provider: generic
+  url: http://192.168.1.175:9210/updates
+  # electron-builder no debe intentar subirlos por su cuenta.
+  publishAutoUpdate: true
