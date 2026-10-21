@@ -115,6 +115,24 @@
     }
     input::placeholder { color: rgba(255, 255, 255, 0.35); }
 
+    .remember {
+      -webkit-app-region: no-drag;
+      width: 100%;
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.5);
+      cursor: pointer;
+      margin: -6px 0 4px;
+      transition: color 0.15s;
+    }
+    .remember:hover { color: rgba(255, 255, 255, 0.75); }
+    .remember input {
+      width: 14px; height: 14px;
+      accent-color: rgba(255, 255, 255, 0.7);
+      cursor: pointer;
+      flex: none;
+    }
+
     button.submit {
       width: 100%;
       margin-top: 8px;
@@ -178,6 +196,14 @@
         <input type="password" id="password" placeholder="Contraseña" autocomplete="current-password" />
       </div>
 
+      <!-- Solo el email. La contraseña es la de la intranet, no solo la de
+           esta app: guardarla aquí daría acceso a todo lo del empleado a
+           cualquiera que entre en el equipo. -->
+      <label class="remember">
+        <input type="checkbox" id="rememberEmail" />
+        <span>Recordar mi email</span>
+      </label>
+
       <button class="submit" id="loginBtn">Iniciar sesión</button>
 
       <div class="error" id="errorMsg"></div>
@@ -198,6 +224,32 @@
     const emailInput = document.getElementById('email');
     const passwordInput = document.getElementById('password');
     const errorMsg = document.getElementById('errorMsg');
+
+    // ── Recordar el email ──
+    // Solo el email, nunca la contraseña: esta es la de la intranet y
+    // guardarla daría acceso a todo lo del empleado a cualquiera que entre
+    // en el equipo. localStorage basta — es un dato que no es secreto.
+    const rememberBox = document.getElementById('rememberEmail');
+    const SAVED_EMAIL = 'brainlabrecord.email';
+
+    try {
+      const saved = localStorage.getItem(SAVED_EMAIL);
+      if (saved) {
+        emailInput.value = saved;
+        rememberBox.checked = true;
+        // Con el email puesto, el cursor va directo a la contraseña.
+        passwordInput.focus();
+      } else {
+        emailInput.focus();
+      }
+    } catch { /* localStorage no disponible: se escribe a mano */ }
+
+    // Desmarcar borra lo guardado en el momento, sin esperar al próximo login.
+    rememberBox.addEventListener('change', () => {
+      if (!rememberBox.checked) {
+        try { localStorage.removeItem(SAVED_EMAIL); } catch { /* ignorar */ }
+      }
+    });
 
     // Botón cerrar (la ventana no tiene frame nativo) — oculta la ventana, la app
     // sigue viva en la bandeja.
@@ -226,6 +278,14 @@
         loginBtn.textContent = 'Iniciar sesión';
         return;
       }
+
+      // Credenciales válidas: ya se puede recordar el email. Se hace aquí y no
+      // al final para que valga también si el usuario no está en public.users
+      // (así no tiene que volver a teclearlo al reintentar).
+      try {
+        if (rememberBox.checked) localStorage.setItem(SAVED_EMAIL, email);
+        else localStorage.removeItem(SAVED_EMAIL);
+      } catch { /* localStorage no disponible: no se recuerda y ya está */ }
 
       // Look up the numeric user id from public.users using company_email
       loginBtn.textContent = 'Buscando usuario...';
