@@ -41,6 +41,20 @@ export function onUploadStatusChange(fn: UploadListener): void {
   uploadListeners.push(fn);
 }
 
+// Un chunk agotó los reintentos: ese trozo de grabación se pierde. Hay que
+// avisar — hasta ahora solo quedaba constancia en el log.
+export interface DroppedChunk {
+  objectName: string;
+  localPath: string;
+}
+
+type DropListener = (info: DroppedChunk) => void;
+const dropListeners: DropListener[] = [];
+
+export function onChunkDropped(fn: DropListener): void {
+  dropListeners.push(fn);
+}
+
 export function getUploadStatus(): UploadStatus {
   const anyRetrying = queue.some((j) => j.retries > 0);
   const health: UploadHealth = anyRetrying
@@ -119,6 +133,14 @@ async function processQueue(): Promise<void> {
       } else {
         failedTotal++;
         console.error(`[uploader] Chunk descartado tras ${MAX_RETRIES} intentos: ${job.localPath}`);
+        const info = { objectName: buildObjectName(job), localPath: job.localPath };
+        for (const fn of dropListeners) {
+          try {
+            fn(info);
+          } catch (err) {
+            log('[uploader] Error en listener de descarte:', err);
+          }
+        }
       }
     }
     emitUploadStatus();

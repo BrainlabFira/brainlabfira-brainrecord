@@ -22,6 +22,8 @@ import {
   setRecordingConfig,
   getScreenInfo,
   getTempDir,
+  getFreeDiskBytes,
+  onCaptureFailure,
   RecordingConfig,
 } from './recorder';
 import {
@@ -29,6 +31,7 @@ import {
   getUploadStatus,
   resetUploadCounters,
   recoverPendingChunks,
+  onChunkDropped,
 } from './uploader';
 import { loadSession, saveSession, clearSession, SessionData } from './auth';
 import { log, initLogPath } from './logger';
@@ -72,6 +75,13 @@ function rendererPath(file: string): string {
   return path.join(__dirname, '../renderer', file);
 }
 
+// Icono de las ventanas y de la barra de tareas. Sin esto Windows muestra el
+// icono por defecto de Electron: electron-builder solo lo aplica al .exe
+// empaquetado, no a las BrowserWindow.
+function appIcon(): string {
+  return path.join(__dirname, '../../assets', 'tray-icon.ico');
+}
+
 // Ventana oculta que solo captura. Nunca se muestra ni se cierra mientras la
 // app vive, para que la grabación no dependa de ninguna ventana visible.
 function createCaptureWindow(): void {
@@ -96,6 +106,7 @@ function createLoginWindow(): void {
     // (el menú de bandeja tampoco ofrecía mostrarla).
     skipTaskbar: false,
     title: 'Brainlabrecord',
+    icon: appIcon(),
     frame: false,
     transparent: true,
     resizable: false,
@@ -113,6 +124,8 @@ function createDashboardWindow(): void {
     width: 760,
     height: 620,
     show: false,
+    icon: appIcon(),
+    title: 'Brainlabrecord',
     frame: false,
     transparent: true,
     resizable: false,
@@ -182,6 +195,7 @@ function createPlayerWindow(): void {
     maximizable: true,
     backgroundColor: '#0d0d10',
     title: 'Brainlabrecord — Reproductor',
+    icon: appIcon(),
     webPreferences: { nodeIntegration: true, contextIsolation: false },
   });
   playerWindow.setMenuBarVisibility(false);
@@ -197,6 +211,30 @@ function createPlayerWindow(): void {
 
 function showNotification(title: string, body: string): void {
   new Notification({ title, body }).show();
+}
+
+// Avisos al empleado. Los críticos son aquellos en los que, sin aviso, creería
+// que está grabando algo que en realidad se está perdiendo.
+export interface AppAlert {
+  level: 'critical' | 'warning';
+  title: string;
+  message: string;
+  detail?: string;
+}
+
+function notifyAlert(alert: AppAlert): void {
+  log(`[alert:${alert.level}] ${alert.title} — ${alert.message}`);
+
+  // Notificación del sistema: se ve aunque el dashboard esté cerrado.
+  showNotification(`Brainlabrecord — ${alert.title}`, alert.message);
+
+  // Y el modal del dashboard, que es el que de verdad interrumpe. Si está
+  // cerrado se abre: un fallo crítico no puede quedarse esperando a que al
+  // empleado le dé por mirar.
+  if (alert.level === 'critical') {
+    openDashboard();
+  }
+  dashboardWindow?.webContents.send('app:alert', alert);
 }
 
 // Reenvía un mensaje a todas las ventanas de UI que existan. Cada una decide
@@ -287,6 +325,22 @@ async function handleStartRecording(): Promise<void> {
     return;
   }
   if (getRecordingStatus().isRecording) return;
+
+  // Disco lleno: los chunks se escriben en temp antes de comprimirse y subir.
+  // Sin espacio, FFmpeg falla y la grabación muere a mitad. Mejor no empezar.
+  const freeBytes = getFreeDiskBytes();
+  const MIN_FREE_GB = 2;
+  if (freeBytes !== null && freeBytes < MIN_FREE_GB * 1024 ** 3) {
+    notifyAlert({
+      level: 'critical',
+      title: 'Espacio insuficiente',
+      message: `Quedan ${(freeBytes / 1024 ** 3).toFixed(1)} GB libres en el disco. `
+        + 'Libera espacio antes de grabar.',
+      detail: 'Los fragmentos se guardan en el disco antes de subirse. '
+        + `Se necesitan al menos ${MIN_FREE_GB} GB.`,
+    });
+    return;
+  }
 
   // Solo reiniciar contadores si no hay nada en vuelo: si quedan chunks de
   // una grabación anterior subiéndose, ponerlos a cero haría parecer que no
@@ -420,6 +474,7 @@ async function gracefulQuit(recording: boolean, pendingTotal: number): Promise<v
     defaultId: 1,
     cancelId: 0,
     title: 'Brainlabrecord',
+    icon: appIcon(),
     message: '¿Cerrar Brainlabrecord?',
     detail: `${parts.join(' ')}\n\nSi sales sin guardar se perderá lo grabado desde el último fragmento.`,
   });
@@ -507,6 +562,35 @@ async function bootstrap(): Promise<void> {
   // a partir de estos eventos en vez de preguntar en bucle.
   onRecordingStatusChange((status) => { broadcast('recording:status', status); });
   onUploadStatusChange((status) => { broadcast('upload:status', status); });
+
+  // La captura no arrancó: se aborta en vez de seguir marcando "Grabando"
+  // sobre una grabación que no existe.
+  onCaptureFailure((message) => {
+    void (async () => {
+      const wasRecording = getRecordingStatus().isRecording;
+      if (wasRecording) {
+        await stopRecording();
+        updateTrayState('idle');
+        panelWindow?.hide();
+      }
+      notifyAlert({
+        level: 'critical',
+        title: 'No se pudo grabar',
+        message: 'La grabación se ha detenido porque no se pudo capturar la pantalla.',
+        detail: message,
+      });
+    })();
+  });
+
+  // Un chunk descartado es un trozo de grabación perdido para siempre.
+  onChunkDropped((info) => {
+    notifyAlert({
+      level: 'critical',
+      title: 'Fragmento perdido',
+      message: `No se pudo subir un fragmento tras varios intentos y se ha descartado.`,
+      detail: `${info.objectName}\nRevisa la conexión con el servidor.`,
+    });
+  });
 
   // ── IPC: sesión ──
   ipcMain.on('session-ready', async (_event, session: SessionData) => {

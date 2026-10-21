@@ -211,6 +211,13 @@
     }
     .btn-confirm:hover { background: rgba(239, 68, 68, 0.32); color: #fff; }
 
+    /* El color del icono distingue de un vistazo un aviso de un fallo grave. */
+    .alert-icon.critical { background: rgba(239, 68, 68, 0.14); }
+    .alert-icon.critical svg { color: #fca5a5; }
+    .alert-icon.warning { background: rgba(251, 191, 36, 0.14); }
+    .alert-icon.warning svg { color: #fbbf24; }
+    .dialog .stats { text-align: left; white-space: pre-line; }
+
     /* ── Cuerpo en dos columnas ── */
     /* ── Pestañas ── */
     .tabs {
@@ -1055,6 +1062,25 @@
       <span id="footerHint"></span>
     </div>
 
+    <!-- Avisos de error. Los críticos son casos en los que el empleado creería
+         estar grabando algo que en realidad se pierde. -->
+    <div class="overlay" id="alertOverlay">
+      <div class="dialog">
+        <div class="icon alert-icon" id="alertIcon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <path d="M12 9v4"/><path d="M12 17h.01"/>
+            <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/>
+          </svg>
+        </div>
+        <h3 id="alertTitle">—</h3>
+        <p id="alertMessage">—</p>
+        <div class="stats" id="alertDetail" hidden></div>
+        <div class="dialog-actions">
+          <button class="btn-cancel" id="alertOk" style="flex:1">Entendido</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Confirmación antes de terminar: una grabación cortada por error no se
          puede reanudar, se queda partida en dos grabaciones distintas. -->
     <div class="overlay" id="confirmOverlay">
@@ -1206,6 +1232,37 @@
       }
     });
 
+    // ── Avisos de error ──
+    // Se encolan: si llegan dos seguidos (p.ej. varios chunks descartados),
+    // el segundo no debe pisar al primero antes de que lo lean.
+    const alertOverlay = document.getElementById('alertOverlay');
+    const alertQueue = [];
+
+    function showNextAlert() {
+      if (alertQueue.length === 0) {
+        alertOverlay.classList.remove('open');
+        return;
+      }
+      const a = alertQueue[0];
+      document.getElementById('alertIcon').className = `icon alert-icon ${a.level}`;
+      document.getElementById('alertTitle').textContent = a.title;
+      document.getElementById('alertMessage').textContent = a.message;
+      const detail = document.getElementById('alertDetail');
+      detail.textContent = a.detail ?? '';
+      detail.hidden = !a.detail;
+      alertOverlay.classList.add('open');
+    }
+
+    ipcRenderer.on('app:alert', (_e, alert) => {
+      alertQueue.push(alert);
+      if (alertQueue.length === 1) showNextAlert();
+    });
+
+    document.getElementById('alertOk').addEventListener('click', () => {
+      alertQueue.shift();
+      showNextAlert();
+    });
+
     document.getElementById('confirmCancel').addEventListener('click', closeConfirmation);
 
     document.getElementById('confirmStop').addEventListener('click', async () => {
@@ -1221,7 +1278,10 @@
     // Escape cancela; es lo que espera cualquiera ante un diálogo.
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
-      if (overlay.classList.contains('open')) closeConfirmation();
+      if (alertOverlay.classList.contains('open')) {
+        alertQueue.shift();
+        showNextAlert();
+      } else if (overlay.classList.contains('open')) closeConfirmation();
       else closeAccountMenu();
     });
 

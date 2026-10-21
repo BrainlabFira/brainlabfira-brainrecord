@@ -104,6 +104,25 @@ export function onRecordingStatusChange(fn: StatusListener): void {
   statusListeners.push(fn);
 }
 
+// Fallo al arrancar la captura: la grabación no está ocurriendo.
+type CaptureFailListener = (message: string) => void;
+const captureFailListeners: CaptureFailListener[] = [];
+
+export function onCaptureFailure(fn: CaptureFailListener): void {
+  captureFailListeners.push(fn);
+}
+
+// Espacio libre en el disco donde se guardan los chunks temporales. Si se
+// llena, FFmpeg falla y la grabación muere en silencio.
+export function getFreeDiskBytes(): number | null {
+  try {
+    const stats = fs.statfsSync(TEMP_DIR);
+    return stats.bavail * stats.bsize;
+  } catch {
+    return null;
+  }
+}
+
 export function getRecordingStatus(): RecordingStatus {
   return {
     isRecording,
@@ -380,8 +399,18 @@ export function initRecorderIPC(): void {
     micUnavailable = true;
   });
 
+  // La captura no arrancó: sin esto la app seguiría marcando "Grabando" con
+  // el cronómetro corriendo mientras no se graba absolutamente nada, y el
+  // empleado lo descubriría al terminar.
   ipcMain.on('capture-error', (_event, message: string) => {
     console.error('[recorder] Error en renderer:', message);
+    for (const fn of captureFailListeners) {
+      try {
+        fn(message);
+      } catch (err) {
+        log('[recorder] Error en listener de fallo de captura:', err);
+      }
+    }
   });
 
   ipcMain.on('capture-debug', (_event, message: string) => {
