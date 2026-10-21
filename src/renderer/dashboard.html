@@ -567,6 +567,44 @@
     .lib-head h2 { margin-bottom: 0; flex: 1; }
     .lib-actions { display: flex; align-items: center; gap: 7px; }
 
+    /* Filtro por usuario: escribible, con sugerencias del datalist. */
+    .lib-user-filter {
+      position: relative;
+      display: flex; align-items: center;
+    }
+    /* El atributo hidden no basta dentro de un contenedor flex: display:flex
+       de la regla de arriba lo pisa. */
+    .lib-user-filter[hidden] { display: none; }
+    .lib-user-filter input {
+      -webkit-app-region: no-drag;
+      width: 170px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 7px;
+      color: #f5f5f5;
+      font-family: inherit; font-size: 11.5px;
+      padding: 6px 24px 6px 9px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .lib-user-filter input:focus { border-color: rgba(255, 255, 255, 0.3); }
+    .lib-user-filter input::placeholder { color: rgba(255, 255, 255, 0.32); }
+    /* Oculta la flecha nativa del datalist, que desentona con el resto. */
+    .lib-user-filter input::-webkit-calendar-picker-indicator {
+      opacity: 0; position: absolute; right: 0; width: 22px; cursor: pointer;
+    }
+
+    .user-clear {
+      -webkit-app-region: no-drag;
+      position: absolute; right: 5px;
+      background: transparent; border: none;
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 10px; cursor: pointer;
+      padding: 3px 4px; border-radius: 4px;
+      line-height: 1;
+    }
+    .user-clear:hover { color: #fff; background: rgba(255,255,255,0.12); }
+
     .icon-btn {
       -webkit-app-region: no-drag;
       width: 28px; height: 28px;
@@ -1077,10 +1115,10 @@
         </svg>
         Grabación
       </button>
-      <!-- Solo administradores. Se revela al arrancar si el servidor dice que
-           lo eres; ocultarla aquí es cosmético, el control real está en el
-           concat-service. -->
-      <button class="tab admin-only" data-tab="library" id="tabLibrary" hidden>
+      <!-- Visible para todos: lo que cambia es el contenido. Un empleado ve
+           sus grabaciones y un administrador las de todos, y eso lo decide el
+           concat-service a partir del JWT, no el cliente. -->
+      <button class="tab" data-tab="library" id="tabLibrary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="m10 7 5 3-5 3V7Z"/><rect x="2" y="4" width="20" height="15" rx="2"/>
         </svg>
@@ -1149,15 +1187,22 @@
         </div>
       </div>
 
-      <!-- ── TAB: Biblioteca (solo admin) ── -->
+      <!-- ── TAB: Biblioteca ── -->
       <div class="tabpanel" data-panel="library">
         <div class="panel lib-panel">
           <div class="lib-head">
             <h2>Grabaciones</h2>
             <div class="lib-actions">
-              <select id="libUser" title="Filtrar por usuario">
-                <option value="">Todos los usuarios</option>
-              </select>
+              <!-- Solo para administradores: a quien ve únicamente sus
+                   grabaciones, filtrar por usuario no le sirve de nada.
+                   Es un input con datalist para poder escribir el nombre
+                   en vez de buscarlo en una lista larga. -->
+              <div class="lib-user-filter" id="libUserWrap" hidden>
+                <input type="text" id="libUser" list="libUserList"
+                       placeholder="Todos los usuarios" autocomplete="off" />
+                <datalist id="libUserList"></datalist>
+                <button class="user-clear" id="libUserClear" title="Quitar filtro" hidden>&#10005;</button>
+              </div>
               <button class="icon-btn" id="libRefresh" title="Actualizar">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>
@@ -1806,14 +1851,33 @@
 
     // El desplegable se repuebla con los usuarios que tienen grabaciones,
     // conservando lo que hubiera seleccionado.
+    // Lista de usuarios disponible para el filtro, para resolver el nombre
+    // escrito a su id.
+    let libUsers = [];
+
     function renderUserFilter(users) {
-      const prev = libUser.value;
-      libUser.innerHTML = '<option value="">Todos los usuarios</option>'
-        + (users ?? []).map((u) =>
-            `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('');
-      if (prev && libUser.querySelector(`option[value="${CSS.escape(prev)}"]`)) {
-        libUser.value = prev;
-      }
+      libUsers = users ?? [];
+      // El filtro solo tiene sentido para quien ve grabaciones de varias
+      // personas; a quien solo ve las suyas no le aporta nada.
+      document.getElementById('libUserWrap').hidden = !isAdminUser;
+
+      document.getElementById('libUserList').innerHTML = libUsers
+        .map((u) => `<option value="${esc(u.name)}"></option>`)
+        .join('');
+    }
+
+    // Devuelve el id del usuario cuyo nombre coincide con lo escrito. Admite
+    // coincidencia parcial: escribir "beatriz" basta, no hay que teclear el
+    // nombre completo.
+    function matchedUserId() {
+      const q = libUser.value.trim().toLowerCase();
+      if (!q) return null;
+      const exact = libUsers.find((u) => u.name.toLowerCase() === q);
+      if (exact) return String(exact.id);
+      const partial = libUsers.filter((u) => u.name.toLowerCase().includes(q));
+      // Solo filtra si no hay ambigüedad; con varios candidatos se deja ver
+      // todo y que termine de escribir.
+      return partial.length === 1 ? String(partial[0].id) : null;
     }
 
     function renderLibrary(payload) {
@@ -1827,21 +1891,35 @@
       // El filtro por usuario se aplica aquí; la búsqueda por texto la hace el
       // servidor (?q=), para no traer listados enteros en cada tecla.
       let list = payload.recordings ?? [];
-      if (libUser.value) list = list.filter((r) => String(r.userId) === libUser.value);
+      const userId = matchedUserId();
+      if (userId) list = list.filter((r) => String(r.userId) === userId);
 
       if (list.length === 0) {
-        const buscando = libSearch.value.trim() || libUser.value;
+        const buscando = libSearch.value.trim() || libUser.value.trim();
         libList.innerHTML = `<div class="empty">${
           buscando ? 'Ninguna grabación coincide' : 'No hay grabaciones'}</div>`;
         return;
       }
 
+      // Un administrador necesita ver de quién es cada grabación; a quien solo
+      // ve las suyas, repetir su nombre en cada línea no le aporta nada y
+      // manda la fecha.
+      //
+      // Depende del ROL, no de cuántos usuarios queden tras filtrar: si no, al
+      // filtrar por una persona las filas perderían el nombre justo cuando el
+      // admin acaba de elegirla.
+      const variosUsuarios = isAdminUser;
+
       libList.innerHTML = list.map((r) => `
         <div class="lib-item">
           <div class="lib-info">
-            <div class="lib-id">${esc(r.userName ?? `Usuario ${r.userId}`)}</div>
+            <div class="lib-id">${
+              variosUsuarios
+                ? esc(r.userName ?? `Usuario ${r.userId}`)
+                : prettyRecId(r.recId)
+            }</div>
             <div class="lib-meta">
-              ${prettyRecId(r.recId)} · ${r.chunks} fragmento${r.chunks === 1 ? '' : 's'} · ${formatBytes(r.bytes)}
+              ${variosUsuarios ? prettyRecId(r.recId) + ' · ' : ''}${r.chunks} fragmento${r.chunks === 1 ? '' : 's'} · ${formatBytes(r.bytes)}
             </div>
           </div>
           <div class="lib-btns">
@@ -1862,11 +1940,16 @@
         </div>`).join('');
     }
 
+    // Se descubre en el arranque (ver más abajo). Decide si se piden las
+    // grabaciones de todos o solo las propias; el servidor lo valida igual.
     let isAdminUser = false;
 
     async function loadLibrary() {
       libRefresh.classList.add('spinning');
       libList.innerHTML = '<div class="empty">Cargando…</div>';
+      // El rol ya se conoce desde el arranque: aplicarlo antes de la petición
+      // evita que el filtro parpadee al abrir la pestaña.
+      document.getElementById('libUserWrap').hidden = !isAdminUser;
       try {
         const payload = await ipcRenderer.invoke('recordings:list', {
           all: isAdminUser,
@@ -1880,7 +1963,28 @@
     }
 
     libRefresh.addEventListener('click', loadLibrary);
-    libUser.addEventListener('change', loadLibrary);
+
+    // El filtro por usuario se aplica sobre lo ya cargado, así que repintar
+    // basta: no hace falta volver a pedir al servidor en cada tecla.
+    const libUserClear = document.getElementById('libUserClear');
+    let userFilterTimer = null;
+    libUser.addEventListener('input', () => {
+      libUserClear.hidden = libUser.value === '';
+      clearTimeout(userFilterTimer);
+      userFilterTimer = setTimeout(loadLibrary, 250);
+    });
+    // Al elegir del datalist salta 'change' pero no 'input', así que la X hay
+    // que actualizarla también aquí.
+    libUser.addEventListener('change', () => {
+      libUserClear.hidden = libUser.value === '';
+      loadLibrary();
+    });
+
+    libUserClear.addEventListener('click', () => {
+      libUser.value = '';
+      libUserClear.hidden = true;
+      loadLibrary();
+    });
 
     // Se espera a que deje de teclear antes de consultar, en vez de lanzar una
     // petición por pulsación.
@@ -2367,15 +2471,13 @@
       const autostart = await ipcRenderer.invoke('account:get-autostart');
       document.getElementById('autostartCheck').classList.toggle('on', autostart);
 
-      // La pestaña Biblioteca solo se muestra a administradores. Quien manda
-      // es el servidor: aquí solo revelamos o no el botón. Si el servicio no
-      // responde, la pestaña se queda oculta y no pasa nada más.
+      // Averiguar el rol antes de que se abra la Biblioteca, para que la
+      // primera carga ya pida lo que corresponde. Si no, un administrador
+      // vería solo sus grabaciones hasta pulsar refrescar.
       try {
         const probe = await ipcRenderer.invoke('recordings:list', { all: false });
-        if (probe && probe.isAdmin) {
-          document.getElementById('tabLibrary').hidden = false;
-        }
-      } catch { /* servidor caído: sin pestaña */ }
+        isAdminUser = Boolean(probe && probe.isAdmin);
+      } catch { /* servidor caído: se asume no-admin y se verá al abrirla */ }
 
       // Atajos: se pintan desde la misma definición que el main registra, y se
       // marcan los que el sistema rechazó (otra app los tenía cogidos) para que
