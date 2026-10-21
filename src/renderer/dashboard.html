@@ -391,6 +391,38 @@
       line-height: 1.5;
     }
 
+    /* Buscador */
+    .lib-search {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 9px;
+      padding: 0 10px;
+      margin-bottom: 12px;
+      flex-shrink: 0;
+      transition: border-color 0.15s;
+    }
+    .lib-search:focus-within { border-color: rgba(255, 255, 255, 0.28); }
+    .lib-search svg { width: 13px; height: 13px; color: rgba(255,255,255,0.35); flex-shrink: 0; }
+    .lib-search input {
+      -webkit-app-region: no-drag;
+      flex: 1;
+      background: transparent; border: none; outline: none;
+      color: #f5f5f5;
+      font-family: inherit; font-size: 12px;
+      padding: 9px 0;
+    }
+    .lib-search input::placeholder { color: rgba(255, 255, 255, 0.3); }
+    .search-clear {
+      -webkit-app-region: no-drag;
+      background: transparent; border: none;
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 12px; cursor: pointer;
+      padding: 2px 4px; border-radius: 4px;
+    }
+    .search-clear:hover { color: #fff; background: rgba(255,255,255,0.1); }
+
+
     .panel {
       background: rgba(255, 255, 255, 0.035);
       border: 1px solid rgba(255, 255, 255, 0.07);
@@ -970,9 +1002,8 @@
           <div class="lib-head">
             <h2>Grabaciones</h2>
             <div class="lib-actions">
-              <select id="libScope">
-                <option value="all">Todos los usuarios</option>
-                <option value="mine">Solo las mías</option>
+              <select id="libUser" title="Filtrar por usuario">
+                <option value="">Todos los usuarios</option>
               </select>
               <button class="icon-btn" id="libRefresh" title="Actualizar">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -980,6 +1011,14 @@
                 </svg>
               </button>
             </div>
+          </div>
+
+          <div class="lib-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+            </svg>
+            <input type="text" id="libSearch" placeholder="Buscar por nombre, fecha o grabación…" />
+            <button class="search-clear" id="libClear" title="Limpiar" hidden>&#10005;</button>
           </div>
 
           <div class="lib-list" id="libList">
@@ -1168,10 +1207,9 @@
 
     // Escape cancela; es lo que espera cualquiera ante un diálogo.
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        if (overlay.classList.contains('open')) closeConfirmation();
-        else closeAccountMenu();
-      }
+      if (e.key !== 'Escape') return;
+      if (overlay.classList.contains('open')) closeConfirmation();
+      else closeAccountMenu();
     });
 
     // El panel flotante también pide confirmación, pero no puede mostrar este
@@ -1187,8 +1225,10 @@
 
     // ── Biblioteca de grabaciones (admin) ──
     const libList = document.getElementById('libList');
-    const libScope = document.getElementById('libScope');
+    const libUser = document.getElementById('libUser');
     const libRefresh = document.getElementById('libRefresh');
+    const libSearch = document.getElementById('libSearch');
+    const libClear = document.getElementById('libClear');
 
     function formatBytes(bytes) {
       if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
@@ -1205,37 +1245,62 @@
       return `${d}/${mo}/${y} · ${h}:${mi}`;
     }
 
+    // Escapar lo que viene del servidor: los nombres son datos, no marcado.
+    function esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      })[c]);
+    }
+
+    // El desplegable se repuebla con los usuarios que tienen grabaciones,
+    // conservando lo que hubiera seleccionado.
+    function renderUserFilter(users) {
+      const prev = libUser.value;
+      libUser.innerHTML = '<option value="">Todos los usuarios</option>'
+        + (users ?? []).map((u) =>
+            `<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('');
+      if (prev && libUser.querySelector(`option[value="${CSS.escape(prev)}"]`)) {
+        libUser.value = prev;
+      }
+    }
+
     function renderLibrary(payload) {
       if (payload.error) {
-        libList.innerHTML = `<div class="lib-error">${payload.error}</div>`;
+        libList.innerHTML = `<div class="lib-error">${esc(payload.error)}</div>`;
         return;
       }
 
-      const list = payload.recordings ?? [];
+      renderUserFilter(payload.users);
+
+      // El filtro por usuario se aplica aquí; la búsqueda por texto la hace el
+      // servidor (?q=), para no traer listados enteros en cada tecla.
+      let list = payload.recordings ?? [];
+      if (libUser.value) list = list.filter((r) => String(r.userId) === libUser.value);
+
       if (list.length === 0) {
-        libList.innerHTML = '<div class="empty">No hay grabaciones</div>';
+        const buscando = libSearch.value.trim() || libUser.value;
+        libList.innerHTML = `<div class="empty">${
+          buscando ? 'Ninguna grabación coincide' : 'No hay grabaciones'}</div>`;
         return;
       }
-
-      const showUser = libScope.value === 'all';
 
       libList.innerHTML = list.map((r) => `
         <div class="lib-item">
           <div class="lib-info">
-            <div class="lib-id">${prettyRecId(r.recId)}</div>
+            <div class="lib-id">${esc(r.userName ?? `Usuario ${r.userId}`)}</div>
             <div class="lib-meta">
-              ${r.chunks} fragmento${r.chunks === 1 ? '' : 's'} · ${formatBytes(r.bytes)} · ${r.recId}
+              ${prettyRecId(r.recId)} · ${r.chunks} fragmento${r.chunks === 1 ? '' : 's'} · ${formatBytes(r.bytes)}
             </div>
           </div>
-          ${showUser ? `<span class="lib-user">Usuario ${r.userId}</span>` : ''}
           <div class="lib-btns">
             <button class="lib-btn" data-act="view"
-                    data-u="${r.userId}" data-f="${r.fecha}" data-r="${r.recId}">
+                    data-u="${esc(r.userId)}" data-f="${esc(r.fecha)}" data-r="${esc(r.recId)}"
+                    data-n="${esc(r.userName ?? '')}">
               <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
               Ver
             </button>
             <button class="lib-btn" data-act="download"
-                    data-u="${r.userId}" data-f="${r.fecha}" data-r="${r.recId}">
+                    data-u="${esc(r.userId)}" data-f="${esc(r.fecha)}" data-r="${esc(r.recId)}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>
               </svg>
@@ -1245,13 +1310,17 @@
         </div>`).join('');
     }
 
+    let isAdminUser = false;
+
     async function loadLibrary() {
       libRefresh.classList.add('spinning');
       libList.innerHTML = '<div class="empty">Cargando…</div>';
       try {
         const payload = await ipcRenderer.invoke('recordings:list', {
-          all: libScope.value === 'all',
+          all: isAdminUser,
+          q: libSearch.value.trim(),
         });
+        isAdminUser = Boolean(payload.isAdmin);
         renderLibrary(payload);
       } finally {
         libRefresh.classList.remove('spinning');
@@ -1259,18 +1328,42 @@
     }
 
     libRefresh.addEventListener('click', loadLibrary);
-    libScope.addEventListener('change', loadLibrary);
+    libUser.addEventListener('change', loadLibrary);
+
+    // Se espera a que deje de teclear antes de consultar, en vez de lanzar una
+    // petición por pulsación.
+    let searchTimer = null;
+    libSearch.addEventListener('input', () => {
+      libClear.hidden = libSearch.value === '';
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(loadLibrary, 300);
+    });
+
+    libClear.addEventListener('click', () => {
+      libSearch.value = '';
+      libClear.hidden = true;
+      loadLibrary();
+    });
+
+    // El reproductor vive en su propia ventana (ver player.html): las
+    // grabaciones son ultrapanorámicas y dentro del dashboard quedaban en una
+    // franja diminuta.
 
     // Delegación: los botones se crean al pintar la lista.
     libList.addEventListener('click', (e) => {
       const btn = e.target.closest('.lib-btn');
       if (!btn) return;
-      ipcRenderer.invoke('recordings:open', {
+      const rec = {
         userId: btn.dataset.u,
         fecha: btn.dataset.f,
         recId: btn.dataset.r,
-        download: btn.dataset.act === 'download',
-      });
+        userName: btn.dataset.n,
+      };
+      if (btn.dataset.act === 'download') {
+        ipcRenderer.invoke('recordings:open', { ...rec, download: true });
+      } else {
+        ipcRenderer.invoke('recordings:play', rec);
+      }
     });
 
     // ── Menú de cuenta ──

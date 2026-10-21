@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Brainlabrecord — Reproductor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      background: #0d0d10;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #f5f5f5;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .shell { height: 100vh; display: flex; flex-direction: column; }
+
+    /* Barra propia: la ventana es frameless para que el vídeo mande. */
+    .bar {
+      display: flex; align-items: center; gap: 12px;
+      height: 46px;
+      padding: 0 8px 0 16px;
+      flex-shrink: 0;
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      -webkit-app-region: drag;
+    }
+    .title { flex: 1; min-width: 0; }
+    .name {
+      font-size: 13.5px; font-weight: 600;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .sub {
+      font-size: 11px; color: rgba(255, 255, 255, 0.4); margin-top: 2px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    .btn {
+      -webkit-app-region: no-drag;
+      width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      background: transparent; border: none;
+      color: rgba(255, 255, 255, 0.55);
+      border-radius: 7px; cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+    .btn.close:hover { background: rgba(239, 68, 68, 0.3); color: #fff; }
+    .btn svg { width: 14px; height: 14px; }
+    .btn.close { font-size: 15px; }
+
+    /* El vídeo manda: ocupa todo el alto restante, con letterbox si hace falta.
+       Las grabaciones son ultrapanorámicas (3840x1080), así que object-fit
+       contain evita recortarlas. */
+    .stage {
+      flex: 1;
+      position: relative;
+      background: #000;
+      min-height: 0;
+    }
+    video {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+
+    .loading {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 7px;
+      background: #000;
+      font-size: 13px; color: rgba(255, 255, 255, 0.6);
+      z-index: 2;
+    }
+    .loading.hidden { display: none; }
+    .hint { font-size: 11px; color: rgba(255, 255, 255, 0.3); }
+
+    .spinner {
+      width: 26px; height: 26px;
+      border: 2px solid rgba(255, 255, 255, 0.12);
+      border-top-color: rgba(255, 255, 255, 0.6);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 4px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading.error .spinner { display: none; }
+    .loading.error { color: #fca5a5; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="bar">
+      <div class="title">
+        <div class="name" id="name">—</div>
+        <div class="sub" id="sub">—</div>
+      </div>
+      <button class="btn" id="download" title="Descargar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>
+        </svg>
+      </button>
+      <button class="btn" id="fullscreen" title="Pantalla completa (F)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/>
+        </svg>
+      </button>
+      <button class="btn close" id="close" title="Cerrar (Esc)">&#10005;</button>
+    </div>
+
+    <div class="stage">
+      <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <span id="loadingText">Preparando el vídeo…</span>
+        <span class="hint" id="loadingHint">La primera vez hay que unir los fragmentos</span>
+      </div>
+      <video id="video" controls preload="metadata"></video>
+    </div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    const video = document.getElementById('video');
+    const loading = document.getElementById('loading');
+    const loadingText = document.getElementById('loadingText');
+    const loadingHint = document.getElementById('loadingHint');
+
+    let current = null;
+
+    // rec_20261020_123350 → "20/10/2026 · 12:33"
+    function prettyRecId(recId) {
+      const m = /^rec_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/.exec(recId);
+      if (!m) return recId;
+      const [, y, mo, d, h, mi] = m;
+      return `${d}/${mo}/${y} · ${h}:${mi}`;
+    }
+
+    // El main manda la grabación a reproducir; la misma ventana se reutiliza
+    // para la siguiente, así no se acumulan ventanas al ver varias seguidas.
+    ipcRenderer.on('player:load', (_e, { rec, url }) => {
+      current = rec;
+      document.getElementById('name').textContent =
+        rec.userName || `Usuario ${rec.userId}`;
+      document.getElementById('sub').textContent =
+        `${prettyRecId(rec.recId)} · ${rec.recId}`;
+
+      loading.classList.remove('hidden', 'error');
+      loadingText.textContent = 'Preparando el vídeo…';
+      loadingHint.textContent = 'La primera vez hay que unir los fragmentos';
+
+      video.src = url;
+      video.load();
+    });
+
+    video.addEventListener('loadeddata', () => loading.classList.add('hidden'));
+    video.addEventListener('error', () => {
+      loading.classList.remove('hidden');
+      loading.classList.add('error');
+      loadingText.textContent = 'No se pudo reproducir la grabación';
+      loadingHint.textContent = 'Comprueba la conexión con el servidor';
+    });
+
+    document.getElementById('close').addEventListener('click', () => {
+      video.pause();
+      ipcRenderer.send('window-close');
+    });
+
+    document.getElementById('download').addEventListener('click', () => {
+      if (current) ipcRenderer.invoke('recordings:open', { ...current, download: true });
+    });
+
+    function toggleFullscreen() {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else document.querySelector('.stage').requestFullscreen();
+    }
+    document.getElementById('fullscreen').addEventListener('click', toggleFullscreen);
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !document.fullscreenElement) {
+        video.pause();
+        ipcRenderer.send('window-close');
+        return;
+      }
+      if (e.key === 'f' || e.key === 'F') { toggleFullscreen(); return; }
+      // Espacio para pausar y flechas para saltar 5s: lo que se espera de
+      // cualquier reproductor.
+      if (e.key === ' ') {
+        e.preventDefault();
+        video.paused ? video.play() : video.pause();
+      } else if (e.key === 'ArrowRight') {
+        video.currentTime = Math.min(video.duration || 0, video.currentTime + 5);
+      } else if (e.key === 'ArrowLeft') {
+        video.currentTime = Math.max(0, video.currentTime - 5);
+      }
+    });
+
+    // Al ocultarse la ventana hay que soltar la descarga en curso: si no, el
+    // vídeo sigue bajando en segundo plano.
+    ipcRenderer.on('player:stop', () => {
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+    });
+  </script>
+</body>
+</html>

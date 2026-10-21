@@ -50,7 +50,9 @@ function buildContextMenu(): MenuType {
       click: () => { callbacks?.onToggleRecording(); },
     },
     {
-      label: 'Panel de control',
+      // Abre el dashboard, o el login si todavía no hay sesión: así siempre
+      // hay forma de recuperar la ventana desde la bandeja.
+      label: 'Abrir Brainlabrecord',
       accelerator: dash?.label,
       click: () => { callbacks?.onOpenDashboard(); },
     },

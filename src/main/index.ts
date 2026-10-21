@@ -61,6 +61,7 @@ let captureWindow: BW | null = null;
 let loginWindow: BW | null = null;
 let dashboardWindow: BW | null = null;
 let panelWindow: BW | null = null;
+let playerWindow: BW | null = null;
 
 let currentSession: SessionData | null = null;
 // Atajos que el sistema rechazó porque otra app ya los tenía registrados.
@@ -90,7 +91,11 @@ function createLoginWindow(): void {
     width: 440,
     height: 560,
     show: false,
-    skipTaskbar: true,
+    // Sí aparece en la barra de tareas: antes llevaba skipTaskbar y, si el
+    // empleado la tapaba con otra ventana, no había forma de volver a ella
+    // (el menú de bandeja tampoco ofrecía mostrarla).
+    skipTaskbar: false,
+    title: 'Brainlabrecord',
     frame: false,
     transparent: true,
     resizable: false,
@@ -157,6 +162,39 @@ function createPanelWindow(): void {
   panelWindow.on('closed', () => { panelWindow = null; });
 }
 
+// Reproductor en ventana propia, no dentro del dashboard: las grabaciones son
+// ultrapanorámicas (3840x1080) y en una ventana de 760px quedaban en una franja
+// diminuta. Aquí se puede redimensionar, maximizar y mover a otro monitor.
+function createPlayerWindow(): void {
+  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+  // 1400x700 salvo que la pantalla sea menor; con margen para que no tape todo.
+  const w = Math.min(1400, Math.round(sw * 0.8));
+  const h = Math.min(760, Math.round(sh * 0.85));
+
+  playerWindow = new BrowserWindow({
+    width: w,
+    height: h,
+    minWidth: 620,
+    minHeight: 380,
+    show: false,
+    frame: false,
+    resizable: true,
+    maximizable: true,
+    backgroundColor: '#0d0d10',
+    title: 'Brainlabrecord — Reproductor',
+    webPreferences: { nodeIntegration: true, contextIsolation: false },
+  });
+  playerWindow.setMenuBarVisibility(false);
+  playerWindow.loadFile(rendererPath('player.html'));
+
+  // Ocultar en vez de cerrar: la ventana se reutiliza para la siguiente
+  // grabación. Al ocultarse hay que parar la descarga en curso.
+  playerWindow.on('hide', () => {
+    playerWindow?.webContents.send('player:stop');
+  });
+  playerWindow.on('closed', () => { playerWindow = null; });
+}
+
 function showNotification(title: string, body: string): void {
   new Notification({ title, body }).show();
 }
@@ -208,7 +246,16 @@ async function connectWithSession(session: SessionData): Promise<void> {
   }
 }
 
+// Trae al frente la ventana que corresponde al estado actual: el login si no
+// hay sesión, el dashboard si la hay. Es lo que hacen el doble clic en la
+// bandeja y Ctrl+Alt+D, para que nunca se quede la app sin forma de volver.
 function openDashboard(): void {
+  if (!currentSession) {
+    if (!loginWindow) createLoginWindow();
+    loginWindow?.show();
+    loginWindow?.focus();
+    return;
+  }
   if (!dashboardWindow) createDashboardWindow();
   dashboardWindow?.show();
   dashboardWindow?.focus();
@@ -541,13 +588,18 @@ async function bootstrap(): Promise<void> {
   // ── IPC: biblioteca de grabaciones ──
   // El concat-service decide qué puede ver cada uno a partir del JWT: aquí solo
   // reenviamos la respuesta. Ocultar la pestaña en el cliente es cosmético.
-  ipcMain.handle('recordings:list', async (_event, { all }: { all: boolean }) => {
+  ipcMain.handle('recordings:list', async (_event, { all, q }: { all: boolean; q?: string }) => {
     const token = await getFreshAccessToken();
     if (!token) return { error: 'Sin sesión activa' };
 
     const base = process.env.UPLOAD_SERVICE_URL ?? 'http://192.168.1.175:9210';
+    const params = new URLSearchParams();
+    if (all) params.set('all', '1');
+    if (q) params.set('q', q);
+    const query = params.toString();
+
     try {
-      const resp = await fetch(`${base}/recordings${all ? '?all=1' : ''}`, {
+      const resp = await fetch(`${base}/recordings${query ? `?${query}` : ''}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!resp.ok) {
@@ -558,6 +610,32 @@ async function bootstrap(): Promise<void> {
       log('[recordings] No se pudo listar:', err);
       return { error: 'No se pudo conectar con el servidor de grabaciones' };
     }
+  });
+
+  // Abre (o reutiliza) la ventana del reproductor con la grabación indicada.
+  // El token va por query porque un <video src> no puede enviar cabeceras.
+  ipcMain.handle('recordings:play', async (_event, rec: { userId: string; fecha: string; recId: string; userName?: string }) => {
+    const token = await getFreshAccessToken();
+    if (!token) return false;
+
+    const base = process.env.UPLOAD_SERVICE_URL ?? 'http://192.168.1.175:9210';
+    const url = `${base}/concat/${rec.userId}/${rec.fecha}/${rec.recId}?token=${encodeURIComponent(token)}`;
+
+    if (!playerWindow || playerWindow.isDestroyed()) createPlayerWindow();
+
+    const send = () => {
+      playerWindow?.webContents.send('player:load', { rec, url });
+      playerWindow?.show();
+      playerWindow?.focus();
+    };
+
+    // Si la ventana acaba de crearse, esperar a que el HTML esté listo.
+    if (playerWindow!.webContents.isLoading()) {
+      playerWindow!.webContents.once('did-finish-load', send);
+    } else {
+      send();
+    }
+    return true;
   });
 
   // Abre el vídeo concatenado en el navegador. El token va por query porque
