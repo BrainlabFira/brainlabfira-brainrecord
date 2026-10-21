@@ -36,13 +36,22 @@ if (!fs.existsSync(releaseDir)) {
   process.exit(1);
 }
 
-// Solo lo que necesita electron-updater. builder-debug.yml y win-unpacked/ no
-// pintan nada en el bucket.
+// Versión que se está publicando, según el manifiesto recién generado.
+const manifestPath = path.join(releaseDir, 'latest.yml');
+const versionMatch = fs.existsSync(manifestPath)
+  ? /^version:\s*(.+)$/m.exec(fs.readFileSync(manifestPath, 'utf-8'))
+  : null;
+const version = versionMatch ? versionMatch[1].trim() : null;
+
+// Solo lo que necesita electron-updater, y SOLO de la versión actual: en
+// release/ se van acumulando los instaladores de builds anteriores, y subirlos
+// llenaría el bucket de versiones que ya nadie necesita.
 const files = fs.readdirSync(releaseDir).filter((f) => {
   if (f === 'latest.yml') return true;
-  if (f.endsWith('.exe') && !f.startsWith('__uninstaller')) return true;
-  if (f.endsWith('.exe.blockmap')) return true;   // descargas diferenciales
-  return false;
+  if (f.startsWith('__uninstaller')) return false;
+  if (!f.endsWith('.exe') && !f.endsWith('.exe.blockmap')) return false;
+  // Sin versión en el manifiesto no se puede filtrar: se sube todo.
+  return version ? f.includes(version) : true;
 });
 
 if (!files.includes('latest.yml')) {

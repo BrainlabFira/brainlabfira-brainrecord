@@ -1,6 +1,6 @@
 {
     "name": "brainlabrecord",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "description": "Brainlabrecord â€” grabaciÃ³n de pantalla para control de presencia",
     "author": "Brainlab",
     "main": "dist/main/index.js",
