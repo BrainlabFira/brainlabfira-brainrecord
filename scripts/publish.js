@@ -79,6 +79,29 @@ const minio = new Minio.Client({
     console.log('ok');
   }
 
+  // Borrar instaladores de versiones anteriores: cada uno ocupa ~100 MB y solo
+  // hace falta el actual. Los .blockmap de la versión anterior SÍ se conservan
+  // (electron-updater los usa para descargas diferenciales), pero son de KB.
+  const keep = new Set(ordered);
+  const stale = [];
+  await new Promise((resolve, reject) => {
+    const stream = minio.listObjectsV2(BUCKET, `${PREFIX}/`, true);
+    stream.on('data', (obj) => {
+      const name = obj.name.slice(PREFIX.length + 1);
+      if (name.endsWith('.exe') && !keep.has(name)) stale.push(obj.name);
+    });
+    stream.on('error', reject);
+    stream.on('end', resolve);
+  });
+
+  if (stale.length > 0) {
+    console.log('\nLimpiando instaladores antiguos:');
+    for (const obj of stale) {
+      await minio.removeObject(BUCKET, obj);
+      console.log(`  ${obj.slice(PREFIX.length + 1)} eliminado`);
+    }
+  }
+
   console.log('\nPublicado. Las apps lo verán en su próxima comprobación.');
 })().catch((err) => {
   console.error('\nError al publicar:', err.message);
