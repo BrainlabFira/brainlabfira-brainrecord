@@ -900,7 +900,7 @@
               <input type="radio" name="profile" value="light" />
               <div class="profile-body">
                 <div class="profile-name">Ligera</div>
-                <div class="profile-desc">Jornadas largas y poco peso</div>
+                <div class="profile-desc">Grabaciones largas y poco peso</div>
                 <div class="profile-specs">
                   3 fps · 50 % · compresión baja
                   <span class="load-tag"></span>
@@ -911,7 +911,7 @@
               <input type="radio" name="profile" value="balanced" checked />
               <div class="profile-body">
                 <div class="profile-name">Equilibrada <span class="tag">por defecto</span></div>
-                <div class="profile-desc">Reuniones y trabajo normal</div>
+                <div class="profile-desc">Equilibrio entre calidad y peso</div>
                 <div class="profile-specs">
                   5 fps · 75 % · compresión media
                   <span class="load-tag"></span>
@@ -922,7 +922,7 @@
               <input type="radio" name="profile" value="high" />
               <div class="profile-body">
                 <div class="profile-name">Alta</div>
-                <div class="profile-desc">Demos y texto pequeño</div>
+                <div class="profile-desc">Máximo detalle, archivos grandes</div>
                 <div class="profile-specs">
                   15 fps · 100 % · compresión alta
                   <span class="load-tag"></span>
@@ -939,14 +939,14 @@
           <div class="setting">
             <div>
               <div class="name">Audio del sistema</div>
-              <div class="desc">Lo que suena por los altavoces: los demás participantes</div>
+              <div class="desc">Lo que suena por los altavoces</div>
             </div>
             <div class="toggle on" id="audioToggle"></div>
           </div>
           <div class="setting">
             <div>
               <div class="name">Micrófono</div>
-              <div class="desc">Tu voz. Sin él, en una reunión solo se grabaría a la otra parte</div>
+              <div class="desc">Tu voz</div>
             </div>
             <div class="toggle on" id="micToggle"></div>
           </div>
@@ -1119,7 +1119,7 @@
       stateLabel.textContent = isRecording ? 'Grabando' : 'Inactivo';
       stateSub.textContent = isRecording
         ? (micWarning
-            ? 'Grabando SIN micrófono — solo se oirá a los demás'
+            ? 'Grabando SIN micrófono — tu voz no se está registrando'
             : (currentRecId ?? 'Grabación en curso'))
         : 'Listo para grabar';
       stateSub.classList.toggle('warn-text', isRecording && micWarning);
@@ -1509,13 +1509,13 @@
     // Qué significa cada valor, en lenguaje de quien va a usar esto. Un
     // desplegable que dice "24 fps" no ayuda a decidir; esto sí.
     const FPS_HELP = {
-      1:  'Una imagen por segundo. Solo para dejar constancia de que se trabajó; el movimiento no se sigue.',
-      3:  'Muy ligero. Suficiente para documentos y código, donde la pantalla casi no cambia.',
-      5:  'Lo habitual para reuniones y trabajo de oficina. Buen equilibrio entre claridad y peso.',
-      10: 'Se nota más fluido al desplazarse por una página o cambiar de ventana.',
-      15: 'Movimiento suave. Recomendado si enseñas demos o navegas mucho durante la grabación.',
-      24: 'Fluidez de cine. Para grabar vídeo reproducido en pantalla. El archivo crece bastante.',
-      30: 'Máxima fluidez. Pesa mucho y consume más memoria: úsalo solo en grabaciones cortas.',
+      1:  'Una imagen por segundo. Queda constancia de lo que se ve, pero no se sigue el movimiento.',
+      3:  'Muy ligero. Suficiente cuando la pantalla cambia poco.',
+      5:  'Buen equilibrio entre claridad y peso.',
+      10: 'Se nota más fluido al desplazarse o cambiar de ventana.',
+      15: 'Movimiento suave, útil si la pantalla cambia a menudo.',
+      24: 'Fluidez de cine. El archivo crece bastante.',
+      30: 'Máxima fluidez. Pesa mucho y consume más memoria: mejor en grabaciones cortas.',
     };
 
     const SCALE_HELP = {
@@ -1687,14 +1687,14 @@
     function updateAudioNote(config) {
       const note = document.getElementById('audioNote');
       if (config.captureAudio && config.captureMic) {
-        note.textContent = 'Tu voz y la de los demás se graban en canales separados, '
-          + 'para poder distinguir quién habla al transcribir la reunión.';
+        note.textContent = 'Ambas fuentes se graban en canales separados, '
+          + 'para poder distinguirlas después.';
         note.className = 'help';
       } else if (config.captureMic) {
-        note.textContent = 'Solo se grabará tu voz: no se oirá a los demás participantes.';
+        note.textContent = 'Solo se grabará tu voz, no el sonido del equipo.';
         note.className = 'help caution';
       } else if (config.captureAudio) {
-        note.textContent = 'Solo se grabará a los demás: tu voz no quedará registrada.';
+        note.textContent = 'Solo se grabará el sonido del equipo, no tu voz.';
         note.className = 'help caution';
       } else {
         note.textContent = 'La grabación no tendrá sonido.';
