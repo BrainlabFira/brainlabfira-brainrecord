@@ -161,6 +161,22 @@
           return;
         }
 
+        // La fuente elegida en el selector. Si ya no existe (la ventana se
+        // cerró entre elegirla y empezar), se aborta en vez de grabar otra
+        // cosa sin avisar.
+        let sourceId = config.sourceId;
+        if (sourceId) {
+          if (!sources.some((s) => s.id === sourceId)) {
+            ipcRenderer.send('capture-error',
+              sourceId.startsWith('window:')
+                ? 'La ventana seleccionada se ha cerrado'
+                : 'La pantalla seleccionada ya no está disponible');
+            return;
+          }
+        } else {
+          sourceId = sources[0].id;
+        }
+
         const constraints = {
           audio: config.captureAudio ? {
             mandatory: { chromeMediaSource: 'desktop' }
@@ -168,9 +184,14 @@
           video: {
             mandatory: {
               chromeMediaSource: 'desktop',
-              chromeMediaSourceId: sources[0].id,
-              minWidth: config.width,
-              minHeight: config.height,
+              chromeMediaSourceId: sourceId,
+              // Una ventana cambia de tamaño mientras se graba, así que no se
+              // puede exigir un mínimo: se fija solo el máximo y se deja que
+              // la captura se adapte. En una pantalla el tamaño es fijo y sí
+              // se puede clavar.
+              ...(sourceId.startsWith('window:')
+                ? {}
+                : { minWidth: config.width, minHeight: config.height }),
               maxWidth: config.width,
               maxHeight: config.height,
               maxFrameRate: config.fps,
@@ -178,7 +199,7 @@
           },
         };
 
-        dbg('llamando getUserMedia con sourceId ' + sources[0].id);
+        dbg('llamando getUserMedia con sourceId ' + sourceId);
         const desktopStream = await navigator.mediaDevices.getUserMedia(constraints);
 
         // El micrófono necesita una llamada APARTE: con

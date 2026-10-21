@@ -24,6 +24,7 @@ import {
   getTempDir,
   getFreeDiskBytes,
   onCaptureFailure,
+  listCaptureSources,
   RecordingConfig,
 } from './recorder';
 import {
@@ -319,7 +320,11 @@ async function doLogout(): Promise<void> {
 // Control de grabación
 // ───────────────────────────────────────────────────────────────
 
-async function handleStartRecording(): Promise<void> {
+// La fuente viene del selector; sin ella se graba la pantalla principal,
+// que es lo que se hacía antes de poder elegir (atajo global, bandeja).
+async function handleStartRecording(
+  source?: { id: string; width: number; height: number } | null
+): Promise<void> {
   if (!currentSession) {
     log('[recording] Se pidió grabar sin sesión activa — ignorado');
     return;
@@ -348,7 +353,8 @@ async function handleStartRecording(): Promise<void> {
   if (getUploadStatus().pending + getUploadStatus().uploading === 0) {
     resetUploadCounters();
   }
-  const recId = await startRecording(String(currentSession.numericUserId), captureWindow!);
+  const recId = await startRecording(
+    String(currentSession.numericUserId), captureWindow!, source ?? null);
   if (!recId) return;
 
   updateTrayState('recording');
@@ -606,8 +612,8 @@ async function bootstrap(): Promise<void> {
   }));
 
   // ── IPC: grabación ──
-  ipcMain.handle('recording:start', async () => {
-    await handleStartRecording();
+  ipcMain.handle('recording:start', async (_event, source) => {
+    await handleStartRecording(source);
     return getRecordingStatus();
   });
 
@@ -624,6 +630,7 @@ async function bootstrap(): Promise<void> {
   // ── IPC: ajustes ──
   ipcMain.handle('config:get', () => getRecordingConfig());
   ipcMain.handle('screen:info', () => getScreenInfo());
+  ipcMain.handle('sources:list', () => listCaptureSources());
 
   ipcMain.handle('config:set', (_event, partial: Partial<RecordingConfig>) => {
     // Los ajustes se aplican a la SIGUIENTE grabación, no a la que está en

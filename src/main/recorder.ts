@@ -33,6 +33,9 @@ export interface RecordingConfig {
   // sistema (ver capture.html): así una transcripción posterior puede separar
   // quién habla sin tener que distinguir las voces de oído.
   captureMic: boolean;
+  // Fuente elegida en el selector. null = pantalla principal, que es lo que
+  // se hacía siempre antes de poder elegir.
+  sourceId: string | null;
   // Fracción de la resolución nativa a la que se captura. 0.75 mantiene el
   // texto legible sin inflar el tamaño; 1 = nativa, 0.5 = la mitad.
   // Ahora es configurable desde el dashboard (antes era una constante).
@@ -50,6 +53,7 @@ const DEFAULT_CONFIG: RecordingConfig = {
   captureAudio: true, // audio del sistema (output) — para grabar meetings
   captureMic: true,   // voz del empleado — sin ella la transcripción solo
                       // recogería a la otra parte de la reunión
+  sourceId: null,     // pantalla principal mientras no se elija otra cosa
   resolutionScale: 0.75,
 };
 
@@ -169,6 +173,95 @@ export function getRecordingConfig(): RecordingConfig {
   return { ...config };
 }
 
+// Fuentes disponibles para el selector, con miniatura. A diferencia de
+// 'get-screen-sources', aquí sí se piden thumbnails: el empleado elige viendo
+// lo que va a grabar, no leyendo nombres de ventana.
+export interface CaptureSource {
+  id: string;
+  name: string;
+  kind: 'screen' | 'window';
+  width: number;    // dimensiones reales de lo que se va a capturar
+  height: number;
+  thumbnail: string; // data URL
+}
+
+export async function listCaptureSources(): Promise<CaptureSource[]> {
+  const sources = await desktopCapturer.getSources({
+    types: ['screen', 'window'],
+    thumbnailSize: { width: 320, height: 200 },
+    fetchWindowIcons: false,
+  });
+
+  const displays = screen.getAllDisplays();
+
+  return sources
+    // Ventanas sin título o minimizadas devuelven miniaturas vacías: no sirven
+    // para elegir y suelen ser procesos de fondo.
+    .filter((s) => s.name && !s.thumbnail.isEmpty())
+    .map((s) => {
+      const isScreen = s.id.startsWith('screen:');
+
+      // Para una pantalla, el tamaño real lo da la API de displays; el de la
+      // miniatura está escalado. Para una ventana usamos el aspecto de la
+      // miniatura, que es lo único disponible sin capturarla.
+      let width = 1920;
+      let height = 1080;
+      if (isScreen) {
+        const d = displays.find((x) => String(x.id) === String(s.display_id)) ?? displays[0];
+        if (d) {
+          width = d.size.width;
+          height = d.size.height;
+        }
+      } else {
+        // De una ventana no hay API que dé su tamaño real, solo el de la
+        // miniatura (320px de ancho). Se estima a partir de su proporción
+        // sobre la pantalla donde está, que es suficiente para calcular el
+        // tamaño de captura; getUserMedia ajustará lo que haga falta.
+        const t = s.thumbnail.getSize();
+        const d = displays[0];
+        const maxW = d ? d.size.width : 1920;
+        const maxH = d ? d.size.height : 1080;
+        const factor = Math.min(maxW / t.width, maxH / t.height);
+        width = Math.round(t.width * factor);
+        height = Math.round(t.height * factor);
+      }
+
+      return {
+        id: s.id,
+        name: isScreen ? nameForScreen(s, displays) : s.name,
+        kind: (isScreen ? 'screen' : 'window') as 'screen' | 'window',
+        width,
+        height,
+        thumbnail: s.thumbnail.toDataURL(),
+      };
+    });
+}
+
+// "Entire screen" no dice nada cuando hay varias: mejor la resolución.
+function nameForScreen(
+  source: Electron.DesktopCapturerSource,
+  displays: Electron.Display[]
+): string {
+  const d = displays.find((x) => String(x.id) === String(source.display_id));
+  if (!d) return source.name;
+  // La resolución ya se muestra debajo de la miniatura; aquí basta con
+  // distinguir una pantalla de otra.
+  if (displays.length === 1) return 'Pantalla completa';
+  const index = displays.findIndex((x) => x.id === d.id) + 1;
+  const isPrimary = d.id === screen.getPrimaryDisplay().id;
+  return `Pantalla ${index}${isPrimary ? ' (principal)' : ''}`;
+}
+
+// Calcula el tamaño de captura a partir de las dimensiones de la fuente
+// elegida (una ventana, o una pantalla que no sea la principal), aplicando la
+// misma escala. Dimensiones pares, que es lo que exige H.264.
+export function applySourceSize(srcWidth: number, srcHeight: number): void {
+  const scale = config.resolutionScale;
+  config.width = Math.max(2, Math.round((srcWidth * scale) / 2) * 2);
+  config.height = Math.max(2, Math.round((srcHeight * scale) / 2) * 2);
+  log(`[recorder] Fuente ${srcWidth}x${srcHeight} → captura a ${config.width}x${config.height}`);
+}
+
 // Resolución nativa de la pantalla principal. El dashboard la necesita para
 // recomendar un perfil y para avisar cuando una combinación se pasa de frenada:
 // 30 fps es trivial en 1366x768 y una barbaridad en 5120x1440.
@@ -183,8 +276,23 @@ export function getScreenInfo(): { width: number; height: number } {
 
 // Inicia una grabación bajo demanda. El id se genera aquí (ya no viene de un
 // fichaje) y devuelve el recId para que la UI pueda mostrarlo.
-export async function startRecording(userId: string, win: BW): Promise<string | null> {
+export async function startRecording(
+  userId: string,
+  win: BW,
+  source?: { id: string; width: number; height: number } | null
+): Promise<string | null> {
   if (isRecording) return currentRecId;
+
+  // La fuente elegida manda sobre la pantalla principal. Una ventana no mide
+  // lo que el monitor, así que el tamaño de captura sale de ella y no de
+  // screen.getPrimaryDisplay().
+  if (source) {
+    config.sourceId = source.id;
+    applySourceSize(source.width, source.height);
+  } else {
+    config.sourceId = null;
+    applyResolutionScale();
+  }
 
   const now = new Date();
   isRecording = true;
@@ -379,12 +487,16 @@ export function initRecorderIPC(): void {
 
   // desktopCapturer only works in the main process (Electron 17+).
   // The renderer requests the screen source id through this handler.
+  // Sin miniaturas: es el que usa capture.html al arrancar cada chunk, y
+  // generarlas ahí sería trabajo desperdiciado.
   ipcMain.handle('get-screen-sources', async () => {
+    // Incluye ventanas: la fuente elegida puede ser una aplicación concreta,
+    // y capture.html comprueba contra esta lista que siga existiendo.
     const sources = await desktopCapturer.getSources({
-      types: ['screen'],
+      types: ['screen', 'window'],
       thumbnailSize: { width: 0, height: 0 },
     });
-    return sources.map((s) => ({ id: s.id, name: s.name }));
+    return sources.map((s) => ({ id: s.id, name: s.name, display_id: s.display_id }));
   });
 
   ipcMain.on('capture-saved', (_event, filePath: string) => {

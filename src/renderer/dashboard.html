@@ -218,6 +218,114 @@
     .alert-icon.warning svg { color: #fbbf24; }
     .dialog .stats { text-align: left; white-space: pre-line; }
 
+    /* ── Selector de fuente ── */
+    .source-dialog {
+      width: 640px; max-width: 100%;
+      max-height: calc(100vh - 56px);
+      display: flex; flex-direction: column;
+      text-align: left;
+      padding: 18px;
+    }
+    .source-head {
+      display: flex; align-items: flex-start; gap: 10px;
+      margin-bottom: 14px;
+    }
+    .source-head h3 { margin-bottom: 3px; }
+    .source-sub { font-size: 11.5px; color: rgba(255,255,255,0.42); margin: 0; }
+    .source-head .icon-btn { margin-left: auto; flex-shrink: 0; }
+
+    .source-tabs {
+      display: flex; gap: 4px;
+      margin-bottom: 12px;
+      flex-shrink: 0;
+    }
+    .source-tab {
+      -webkit-app-region: no-drag;
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      color: rgba(255, 255, 255, 0.5);
+      font-family: inherit; font-size: 11.5px;
+      padding: 6px 13px;
+      cursor: pointer;
+      transition: background 0.14s, color 0.14s, border-color 0.14s;
+    }
+    .source-tab:hover { color: rgba(255,255,255,0.85); }
+    .source-tab.active {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.25);
+      color: #fff;
+    }
+
+    .source-grid {
+      flex: 1;
+      min-height: 190px;
+      max-height: 340px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      align-content: start;
+      margin-bottom: 16px;
+      padding-right: 3px;
+    }
+    .source-grid::-webkit-scrollbar { width: 6px; }
+    .source-grid::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.12); border-radius: 3px;
+    }
+    .source-grid .empty { grid-column: 1 / -1; }
+
+    .source-card {
+      -webkit-app-region: no-drag;
+      min-width: 0;   /* sin esto una miniatura ancha estira su columna */
+      background: rgba(255, 255, 255, 0.04);
+      border: 2px solid transparent;
+      border-radius: 9px;
+      padding: 7px;
+      cursor: pointer;
+      text-align: left;
+      font-family: inherit;
+      transition: background 0.14s, border-color 0.14s;
+    }
+    .source-card:hover { background: rgba(255, 255, 255, 0.09); }
+    .source-card.selected {
+      border-color: rgba(74, 222, 128, 0.6);
+      background: rgba(74, 222, 128, 0.08);
+    }
+    .source-card img {
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      object-fit: contain;
+      background: #000;
+      border-radius: 5px;
+      display: block;
+      margin-bottom: 6px;
+    }
+    .source-card .label {
+      font-size: 10.5px;
+      color: rgba(255, 255, 255, 0.75);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .source-card .dims {
+      font-size: 9.5px;
+      color: rgba(255, 255, 255, 0.32);
+      margin-top: 1px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .btn-confirm.start {
+      background: rgba(74, 222, 128, 0.18);
+      border-color: rgba(74, 222, 128, 0.45);
+      color: #4ade80;
+    }
+    .btn-confirm.start:hover { background: rgba(74, 222, 128, 0.3); color: #fff; }
+    .btn-confirm.start:disabled {
+      opacity: 0.4; cursor: not-allowed;
+      background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.5);
+    }
+
     /* ── Cuerpo en dos columnas ── */
     /* ── Pestañas ── */
     .tabs {
@@ -1062,6 +1170,38 @@
       <span id="footerHint"></span>
     </div>
 
+    <!-- Selector de fuente: se elige viendo la miniatura, no leyendo nombres
+         de ventana. -->
+    <div class="overlay" id="sourceOverlay">
+      <div class="dialog source-dialog">
+        <div class="source-head">
+          <div>
+            <h3>¿Qué quieres grabar?</h3>
+            <p class="source-sub">Elige una pantalla completa o una aplicación concreta</p>
+          </div>
+          <button class="icon-btn" id="sourceRefresh" title="Actualizar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="source-tabs">
+          <button class="source-tab active" data-kind="screen">Pantallas</button>
+          <button class="source-tab" data-kind="window">Aplicaciones</button>
+        </div>
+
+        <div class="source-grid" id="sourceGrid">
+          <div class="empty">Buscando…</div>
+        </div>
+
+        <div class="dialog-actions">
+          <button class="btn-cancel" id="sourceCancel">Cancelar</button>
+          <button class="btn-confirm start" id="sourceStart" disabled>Grabar</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Avisos de error. Los críticos son casos en los que el empleado creería
          estar grabando algo que en realidad se pierde. -->
     <div class="overlay" id="alertOverlay">
@@ -1219,17 +1359,90 @@
 
     function closeConfirmation() { overlay.classList.remove('open'); }
 
+    // ── Selector de fuente ──
+    const sourceOverlay = document.getElementById('sourceOverlay');
+    const sourceGrid = document.getElementById('sourceGrid');
+    const sourceStart = document.getElementById('sourceStart');
+    let sourceList = [];
+    let sourceKind = 'screen';
+    let sourceChosen = null;
+
+    function renderSources() {
+      const list = sourceList.filter((s) => s.kind === sourceKind);
+      if (list.length === 0) {
+        sourceGrid.innerHTML = `<div class="empty">${
+          sourceKind === 'window'
+            ? 'No hay ventanas abiertas que se puedan grabar'
+            : 'No se detectaron pantallas'}</div>`;
+        return;
+      }
+      sourceGrid.innerHTML = list.map((s) => `
+        <button class="source-card${sourceChosen === s.id ? ' selected' : ''}" data-id="${esc(s.id)}">
+          <img src="${s.thumbnail}" alt="" />
+          <div class="label" title="${esc(s.name)}">${esc(s.name)}</div>
+          <div class="dims">${
+            // De una ventana no se conoce el tamaño real, solo el de la
+            // miniatura: mostrarlo confundiría más que ayudar.
+            s.kind === 'screen' ? `${s.width} × ${s.height}` : 'Ventana'
+          }</div>
+        </button>`).join('');
+    }
+
+    async function loadSources() {
+      sourceGrid.innerHTML = '<div class="empty">Buscando…</div>';
+      sourceList = await ipcRenderer.invoke('sources:list');
+
+      // Preseleccionar la primera pantalla: lo más habitual es grabar la
+      // pantalla entera, y así el botón Grabar está activo de entrada.
+      if (!sourceChosen) {
+        const first = sourceList.find((s) => s.kind === 'screen');
+        if (first) sourceChosen = first.id;
+      }
+      sourceStart.disabled = !sourceChosen;
+      renderSources();
+    }
+
+    document.querySelectorAll('.source-tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        sourceKind = tab.dataset.kind;
+        document.querySelectorAll('.source-tab').forEach((t) =>
+          t.classList.toggle('active', t === tab));
+        renderSources();
+      });
+    });
+
+    sourceGrid.addEventListener('click', (e) => {
+      const card = e.target.closest('.source-card');
+      if (!card) return;
+      sourceChosen = card.dataset.id;
+      sourceStart.disabled = false;
+      renderSources();
+    });
+
+    document.getElementById('sourceRefresh').addEventListener('click', loadSources);
+
+    function closeSourcePicker() { sourceOverlay.classList.remove('open'); }
+    document.getElementById('sourceCancel').addEventListener('click', closeSourcePicker);
+
+    sourceStart.addEventListener('click', async () => {
+      const source = sourceList.find((s) => s.id === sourceChosen);
+      closeSourcePicker();
+      recBtn.disabled = true;
+      try {
+        await ipcRenderer.invoke('recording:start', source ?? null);
+      } finally {
+        recBtn.disabled = false;
+      }
+    });
+
     recBtn.addEventListener('click', async () => {
       if (isRecording) {
         askStopConfirmation();
         return;
       }
-      recBtn.disabled = true;
-      try {
-        await ipcRenderer.invoke('recording:start');
-      } finally {
-        recBtn.disabled = false;
-      }
+      // Elegir qué grabar antes de empezar, con la miniatura delante.
+      sourceOverlay.classList.add('open');
+      loadSources();
     });
 
     // ── Avisos de error ──
@@ -1282,6 +1495,7 @@
         alertQueue.shift();
         showNextAlert();
       } else if (overlay.classList.contains('open')) closeConfirmation();
+      else if (sourceOverlay.classList.contains('open')) closeSourcePicker();
       else closeAccountMenu();
     });
 
