@@ -147,6 +147,28 @@ Una actualización correcta deja este rastro:
 
 ---
 
+## Migrar equipos con una versión anterior a la 1.0.1
+
+**Quien tenga instalada la 1.0.0 (o cualquier versión anterior a la 1.0.1)
+tiene que reinstalar a mano, una última vez.** Esas versiones no llevan el
+código del updater, así que no pueden enterarse de que hay actualizaciones:
+el mecanismo no puede entregarse a sí mismo.
+
+| Versión instalada | ¿Se actualiza sola? |
+|---|---|
+| Anterior a 1.0.1 | **No** — hay que reinstalar una vez |
+| 1.0.1 o posterior | Sí |
+
+Para migrarlos, basta con pasarles el enlace de descarga de abajo. **No hace
+falta desinstalar antes**: el instalador sobrescribe la versión anterior y
+conserva la sesión guardada, así que no tendrán que volver a iniciar sesión.
+
+Para saber qué versión tiene un equipo:
+
+```powershell
+(Get-Item "$env:LOCALAPPDATA\Programs\Brainlabrecord\Brainlabrecord.exe").VersionInfo.ProductVersion
+```
+
 ## Instalación inicial (empleado nuevo)
 
 ```
