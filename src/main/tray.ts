@@ -58,7 +58,9 @@ function buildContextMenu(): MenuType {
     },
     { type: 'separator' },
     {
-      label: `${APP_NAME} v1.0.0`,
+      // Versión real, no escrita a mano: con las actualizaciones automáticas
+      // un número fijo quedaría desfasado en cuanto se publique otra.
+      label: `${APP_NAME} v${app.getVersion()}`,
       enabled: false,
     },
     { type: 'separator' },
