@@ -467,6 +467,7 @@
       color: rgba(255, 255, 255, 0.92);
     }
     .rec-dot { width: 13px; height: 13px; }
+    .rec-text .sub.warn-text { color: #fbbf24; }
 
     button.action {
       width: 100%;
@@ -938,10 +939,18 @@
           <div class="setting">
             <div>
               <div class="name">Audio del sistema</div>
-              <div class="desc">Graba lo que suena por los altavoces</div>
+              <div class="desc">Lo que suena por los altavoces: los demás participantes</div>
             </div>
             <div class="toggle on" id="audioToggle"></div>
           </div>
+          <div class="setting">
+            <div>
+              <div class="name">Micrófono</div>
+              <div class="desc">Tu voz. Sin él, en una reunión solo se grabaría a la otra parte</div>
+            </div>
+            <div class="toggle on" id="micToggle"></div>
+          </div>
+          <div class="help" id="audioNote"></div>
         </div>
 
         <div class="panel">
@@ -1079,6 +1088,7 @@
     const historyEl = document.getElementById('history');
 
     let isRecording = false;
+    let micWarning = false;
     let startedAtMs = 0;
     let tickTimer = null;
     let currentRecId = null;
@@ -1108,8 +1118,11 @@
       recBtn.classList.toggle('danger', isRecording);
       stateLabel.textContent = isRecording ? 'Grabando' : 'Inactivo';
       stateSub.textContent = isRecording
-        ? (currentRecId ?? 'Grabación en curso')
+        ? (micWarning
+            ? 'Grabando SIN micrófono — solo se oirá a los demás'
+            : (currentRecId ?? 'Grabación en curso'))
         : 'Listo para grabar';
+      stateSub.classList.toggle('warn-text', isRecording && micWarning);
 
       if (isRecording) {
         if (!tickTimer) { tick(); tickTimer = setInterval(tick, 1000); }
@@ -1425,6 +1438,7 @@
       isRecording = status.isRecording;
       startedAtMs = status.startedAtMs;
       currentRecId = status.recId;
+      micWarning = Boolean(status.micUnavailable);
 
       // Al pasar de grabando a parado, guardamos la grabación en el historial.
       if (wasRecording && !isRecording && previousRecId) {
@@ -1480,6 +1494,7 @@
     const scaleSel = document.getElementById('scale');
     const crfSel = document.getElementById('crf');
     const audioToggle = document.getElementById('audioToggle');
+    const micToggle = document.getElementById('micToggle');
     // Ya no hay desplegable "Avanzado": con las pestañas, los ajustes finos
     // viven en su propio panel dentro de la pestaña Calidad.
 
@@ -1637,6 +1652,8 @@
       crfSel.value = String(config.crf);
       scaleSel.value = String(config.resolutionScale ?? 0.75);
       audioToggle.classList.toggle('on', config.captureAudio);
+      micToggle.classList.toggle('on', config.captureMic);
+      updateAudioNote(config);
       syncProfileSelection(config);
       updateHelp();
     }
@@ -1664,11 +1681,36 @@
     scaleSel.addEventListener('change', () =>
       pushSetting({ resolutionScale: Number(scaleSel.value) }));
 
-    audioToggle.addEventListener('click', () => {
-      const next = !audioToggle.classList.contains('on');
-      audioToggle.classList.toggle('on', next);
-      ipcRenderer.invoke('config:set', { captureAudio: next });
-    });
+    // Explica qué se va a grabar según los dos interruptores. Importa porque
+    // la combinación no es obvia: con los dos activos cada fuente va a un
+    // canal distinto, que es lo que permite separar las voces al transcribir.
+    function updateAudioNote(config) {
+      const note = document.getElementById('audioNote');
+      if (config.captureAudio && config.captureMic) {
+        note.textContent = 'Tu voz y la de los demás se graban en canales separados, '
+          + 'para poder distinguir quién habla al transcribir la reunión.';
+        note.className = 'help';
+      } else if (config.captureMic) {
+        note.textContent = 'Solo se grabará tu voz: no se oirá a los demás participantes.';
+        note.className = 'help caution';
+      } else if (config.captureAudio) {
+        note.textContent = 'Solo se grabará a los demás: tu voz no quedará registrada.';
+        note.className = 'help caution';
+      } else {
+        note.textContent = 'La grabación no tendrá sonido.';
+        note.className = 'help caution';
+      }
+    }
+
+    async function setAudioOption(toggle, key) {
+      const next = !toggle.classList.contains('on');
+      toggle.classList.toggle('on', next);
+      const updated = await ipcRenderer.invoke('config:set', { [key]: next });
+      updateAudioNote(updated);
+    }
+
+    audioToggle.addEventListener('click', () => setAudioOption(audioToggle, 'captureAudio'));
+    micToggle.addEventListener('click', () => setAudioOption(micToggle, 'captureMic'));
 
     // ── Arranque ──
     (async () => {
@@ -1689,6 +1731,7 @@
       isRecording = status.isRecording;
       startedAtMs = status.startedAtMs;
       currentRecId = status.recId;
+      micWarning = Boolean(status.micUnavailable);
       renderRecordingState();
       renderHistory();
       applyConfig(config);

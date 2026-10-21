@@ -121,6 +121,9 @@
       transition: height 0.08s linear, background 0.08s linear;
     }
     .vu span.on { background: #4ade80; }
+    /* Micrófono pedido pero no disponible: el nivel sigue moviéndose (hay
+       audio de sistema), así que hace falta distinguirlo por color. */
+    .vu.mic-off span.on { background: #fbbf24; }
 
     /* Minimizado: el punto es un BOTÓN no-drag. Antes era un div dentro de la
        barra, que es -webkit-app-region: drag — Windows se tragaba el clic como
@@ -305,6 +308,15 @@
     ipcRenderer.on('recording:status', (_e, status) => {
       isRecording = status.isRecording;
       startedAtMs = status.startedAtMs;
+
+      // Micrófono pedido pero no disponible: se marca el VU en ámbar, porque
+      // grabar una reunión sin la voz propia se descubre demasiado tarde.
+      const vu = document.getElementById('vu');
+      vu.classList.toggle('mic-off', Boolean(status.micUnavailable));
+      vu.title = status.micUnavailable
+        ? 'Sin micrófono: solo se graba el audio del sistema'
+        : 'Nivel de audio';
+
       if (isRecording) {
         startTicking();
         scheduleAutohide();

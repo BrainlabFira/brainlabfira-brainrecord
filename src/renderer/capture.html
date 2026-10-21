@@ -32,6 +32,75 @@
 
     const dbg = (m) => ipcRenderer.send('capture-debug', m);
 
+    // Contexto de audio de la mezcla. Se guarda aparte del medidor de nivel
+    // porque vive mientras dura el chunk, no solo mientras se mide.
+    let mixContext = null;
+
+    // Construye el stream final que graba el MediaRecorder.
+    //
+    // Cuando hay micrófono, las dos fuentes NO se suman en una sola pista: se
+    // reparten por canales.
+    //
+    //    canal izquierdo  ←  micrófono       (la voz del empleado)
+    //    canal derecho    ←  audio del sistema (los demás participantes)
+    //
+    // El MP4 resultante es estéreo normal y se reproduce igual en cualquier
+    // sitio, pero conserva la separación. Una transcripción posterior puede
+    // extraer cada canal por separado:
+    //
+    //    ffmpeg -i grabacion.mp4 -af "pan=mono|c0=c0" empleado.wav
+    //    ffmpeg -i grabacion.mp4 -af "pan=mono|c0=c1" remoto.wav
+    //
+    // Así se sabe quién dice qué sin que el modelo tenga que distinguir las
+    // voces de oído, que es la parte que peor funciona de la diarización.
+    function buildStream(desktopStream, micStream, config) {
+      const videoTracks = desktopStream.getVideoTracks();
+      const sysTracks = desktopStream.getAudioTracks();
+
+      // Sin micro (o sin permiso): se graba tal cual venía.
+      if (!micStream || micStream.getAudioTracks().length === 0) {
+        return desktopStream;
+      }
+
+      // Micro sin audio de sistema: la voz sola, sin inventar un canal vacío.
+      if (sysTracks.length === 0) {
+        return new MediaStream([...videoTracks, ...micStream.getAudioTracks()]);
+      }
+
+      try {
+        const ctx = new AudioContext();
+        mixContext = ctx;
+
+        const micSource = ctx.createMediaStreamSource(micStream);
+        const sysSource = ctx.createMediaStreamSource(
+          new MediaStream(sysTracks)
+        );
+
+        // Cada fuente se colapsa a mono antes de asignarle su canal: si no, el
+        // estéreo original del sistema se repartiría entre los dos lados y
+        // acabaría contaminando el canal del micrófono.
+        const micMono = ctx.createChannelMerger(1);
+        const sysMono = ctx.createChannelMerger(1);
+        micSource.connect(micMono);
+        sysSource.connect(sysMono);
+
+        const merger = ctx.createChannelMerger(2);
+        micMono.connect(merger, 0, 0);  // → izquierdo
+        sysMono.connect(merger, 0, 1);  // → derecho
+
+        const dest = ctx.createMediaStreamDestination();
+        merger.connect(dest);
+
+        dbg('audio mezclado: micro=izquierdo, sistema=derecho');
+        return new MediaStream([...videoTracks, ...dest.stream.getAudioTracks()]);
+      } catch (err) {
+        // Si la mezcla falla, mejor grabar solo el audio del sistema que
+        // quedarse sin vídeo.
+        dbg('Falló la mezcla de audio, grabando solo el sistema: ' + err.message);
+        return desktopStream;
+      }
+    }
+
     function startLevelMetering(stream) {
       stopLevelMetering();
       if (stream.getAudioTracks().length === 0) return;
@@ -110,9 +179,33 @@
         };
 
         dbg('llamando getUserMedia con sourceId ' + sources[0].id);
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        const desktopStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        // El micrófono necesita una llamada APARTE: con
+        // chromeMediaSource:'desktop' Chromium solo entrega el audio de salida,
+        // no se puede pedir el micro en los mismos constraints.
+        let micStream = null;
+        if (config.captureMic) {
+          try {
+            micStream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                echoCancellation: true,   // evita capturar lo que suena por los altavoces
+                noiseSuppression: true,
+                autoGainControl: true,
+              },
+            });
+            dbg('micrófono abierto: ' + (micStream.getAudioTracks()[0]?.label ?? '?'));
+          } catch (micErr) {
+            // Sin micrófono se sigue grabando: perder la voz del empleado es
+            // malo, pero perder la reunión entera es peor.
+            dbg('No se pudo abrir el micrófono: ' + micErr.message);
+            ipcRenderer.send('capture-mic-error', micErr.message);
+          }
+        }
+
+        const stream = buildStream(desktopStream, micStream, config);
         activeStream = stream;
-        dbg('stream obtenido, iniciando MediaRecorder');
+        dbg('stream listo, iniciando MediaRecorder');
 
         // Bitrate alto para que el webm intermedio no difumine el texto antes de
         // que FFmpeg reencode. ~8 Mbps es generoso para contenido de pantalla a 5fps.
@@ -132,7 +225,17 @@
             fs.mkdirSync(path.dirname(currentChunkPath), { recursive: true });
             fs.writeFileSync(currentChunkPath, Buffer.from(buffer));
             ipcRenderer.send('capture-saved', currentChunkPath);
+
+            // Parar TODAS las fuentes, no solo el stream mezclado: sus pistas
+            // son nodos de Web Audio, así que el micrófono real seguiría
+            // abierto (y el indicador de Windows encendido) al terminar.
             stream.getTracks().forEach((t) => t.stop());
+            desktopStream.getTracks().forEach((t) => t.stop());
+            if (micStream) micStream.getTracks().forEach((t) => t.stop());
+            if (mixContext) {
+              mixContext.close().catch(() => {});
+              mixContext = null;
+            }
             if (activeStream === stream) activeStream = null;
           });
         };

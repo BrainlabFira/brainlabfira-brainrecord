@@ -29,6 +29,10 @@ export interface RecordingConfig {
   crf: number;          // 18=high quality, 28=medium, 35=low
   chunkDurationSec: number;
   captureAudio: boolean;
+  // Micrófono del empleado. Se graba en un canal distinto del audio del
+  // sistema (ver capture.html): así una transcripción posterior puede separar
+  // quién habla sin tener que distinguir las voces de oído.
+  captureMic: boolean;
   // Fracción de la resolución nativa a la que se captura. 0.75 mantiene el
   // texto legible sin inflar el tamaño; 1 = nativa, 0.5 = la mitad.
   // Ahora es configurable desde el dashboard (antes era una constante).
@@ -44,6 +48,8 @@ const DEFAULT_CONFIG: RecordingConfig = {
   crf: 26,
   chunkDurationSec: 600, // 10 minutes
   captureAudio: true, // audio del sistema (output) — para grabar meetings
+  captureMic: true,   // voz del empleado — sin ella la transcripción solo
+                      // recogería a la otra parte de la reunión
   resolutionScale: 0.75,
 };
 
@@ -74,6 +80,9 @@ let currentUserId: string | null = null;
 // la mitad de cada una.
 let currentDateStamp: string | null = null;
 let startedAtMs = 0;
+// El micrófono se pidió pero no se pudo abrir. Lo consulta el estado para que
+// la UI lo avise, en vez de grabar sin voz en silencio.
+let micUnavailable = false;
 let currentChunkIndex = 0;
 let chunkTimer: NodeJS.Timeout | null = null;
 let mainWindow: BW | null = null;
@@ -85,6 +94,7 @@ export interface RecordingStatus {
   startedAtMs: number;
   elapsedSec: number;
   chunkIndex: number;
+  micUnavailable: boolean;
 }
 
 type StatusListener = (status: RecordingStatus) => void;
@@ -101,6 +111,7 @@ export function getRecordingStatus(): RecordingStatus {
     startedAtMs,
     elapsedSec: isRecording ? Math.floor((Date.now() - startedAtMs) / 1000) : 0,
     chunkIndex: currentChunkIndex,
+    micUnavailable,
   };
 }
 
@@ -163,6 +174,7 @@ export async function startRecording(userId: string, win: BW): Promise<string | 
   currentUserId = userId;
   startedAtMs = now.getTime();
   currentChunkIndex = 0;
+  micUnavailable = false;   // se vuelve a intentar en cada grabación
   mainWindow = win;
 
   fs.mkdirSync(TEMP_DIR, { recursive: true });
@@ -358,6 +370,14 @@ export function initRecorderIPC(): void {
 
   ipcMain.on('capture-saved', (_event, filePath: string) => {
     log('[recorder] Chunk guardado por renderer:', filePath);
+  });
+
+  // El micrófono falló (sin permiso, sin dispositivo, en uso por otra app).
+  // La grabación continúa sin voz, pero hay que avisar: si no, el empleado
+  // descubre que falta su audio cuando ya es tarde.
+  ipcMain.on('capture-mic-error', (_event, message: string) => {
+    log('[recorder] Micrófono no disponible:', message);
+    micUnavailable = true;
   });
 
   ipcMain.on('capture-error', (_event, message: string) => {
