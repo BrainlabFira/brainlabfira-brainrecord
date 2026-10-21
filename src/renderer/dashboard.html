@@ -500,6 +500,9 @@
     }
 
     .upd-progress { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+    /* El atributo hidden no basta frente a display:flex de la regla de arriba:
+       sin esto la barra se veía al 0 % incluso con "Todo al día". */
+    .upd-progress[hidden] { display: none; }
     .upd-bar {
       flex: 1; height: 5px;
       background: rgba(255, 255, 255, 0.08);
@@ -1374,10 +1377,9 @@
         <div class="panel">
           <h2>Cómo funciona</h2>
           <p class="panel-intro" style="margin-bottom:0">
-            La app busca actualizaciones al iniciar sesión y cada pocas horas.
-            Cuando hay una disponible se descarga sola en segundo plano y se
-            instala en cuanto no haya ninguna grabación en curso ni fragmentos
-            pendientes de subir: una actualización nunca interrumpe una grabación.
+            Las actualizaciones se buscan e instalan solas, sin que tengas que
+            hacer nada. La instalación espera a que no haya nada grabándose ni
+            subiéndose, así que no interrumpe el trabajo en curso.
           </p>
         </div>
       </div>
@@ -2070,8 +2072,8 @@
           install.hidden = false;
           badge.hidden = false;
           note.textContent = s.waitingForIdle
-            ? 'Se instalará automáticamente en cuanto termine la grabación y se '
-              + 'suban los fragmentos pendientes.'
+            ? 'Se instalará automáticamente en cuanto termine lo que está en '
+              + 'curso y se suban los fragmentos pendientes.'
             : 'Se instalará automáticamente. La app se reiniciará.';
           if (s.waitingForIdle) note.className = 'help caution';
           break;
