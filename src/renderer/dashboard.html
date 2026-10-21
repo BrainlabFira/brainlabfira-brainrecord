@@ -220,7 +220,7 @@
 
     /* ── Selector de fuente ── */
     .source-dialog {
-      width: 640px; max-width: 100%;
+      width: 680px; max-width: 100%;
       max-height: calc(100vh - 56px);
       display: flex; flex-direction: column;
       text-align: left;
@@ -260,17 +260,21 @@
     .ss-chip {
       -webkit-app-region: no-drag;
       position: relative;
-      width: 30px; height: 28px;
-      display: flex; align-items: center; justify-content: center;
+      height: 28px;
+      display: flex; align-items: center; gap: 6px;
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 8px;
       color: rgba(255, 255, 255, 0.4);
+      font-family: inherit; font-size: 11px;
+      padding: 0 9px 0 8px;
       cursor: pointer;
+      white-space: nowrap;
       transition: background 0.14s, color 0.14s, border-color 0.14s;
     }
     .ss-chip:hover { background: rgba(255, 255, 255, 0.1); color: rgba(255,255,255,0.8); }
-    .ss-chip svg { width: 14px; height: 14px; }
+    .ss-chip svg { width: 14px; height: 14px; flex-shrink: 0; }
+    .ss-name { font-weight: 500; }
 
     /* Activo */
     .ss-chip.on {
@@ -297,13 +301,15 @@
       color: rgba(255, 255, 255, 0.3);
       border-color: rgba(255, 255, 255, 0.1);
     }
+    /* Tacha solo el icono, no la etiqueta: con texto al lado, una raya de
+       lado a lado del chip taparía la palabra. */
     .ss-chip:not(.on)::after {
       content: '';
       position: absolute;
-      left: 6px; right: 6px; top: 50%;
-      height: 1.5px;
+      left: 7px; top: 50%;
+      width: 16px; height: 1.5px;
       background: rgba(255, 255, 255, 0.45);
-      transform: rotate(-45deg);
+      transform: translateY(-50%) rotate(-45deg);
       border-radius: 1px;
     }
 
@@ -314,6 +320,8 @@
       display: flex; align-items: center; gap: 4px;
       margin-bottom: 12px;
       flex-shrink: 0;
+      flex-wrap: wrap;   /* en ventanas estrechas baja a dos líneas en vez de cortarse */
+      row-gap: 8px;
     }
     .source-tab {
       -webkit-app-region: no-drag;
@@ -1286,12 +1294,14 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/>
               </svg>
+              <span class="ss-name">Audio</span>
               <span class="ss-dot"></span>
             </button>
             <button class="ss-chip" id="ssMic" title="Micrófono">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 17v4"/>
               </svg>
+              <span class="ss-name">Micrófono</span>
               <span class="ss-dot"></span>
             </button>
           </div>
