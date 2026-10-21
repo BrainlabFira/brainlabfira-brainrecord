@@ -171,17 +171,48 @@ Para saber qué versión tiene un equipo:
 
 ## Instalación inicial (empleado nuevo)
 
+Pásales **este enlace**. Es el mismo para todos y no caduca al publicar
+versiones nuevas: resuelve la última leyendo el manifiesto.
+
 ```
-http://192.168.1.175:9210/download?token=<jwt>
+http://192.168.1.175:9210/download?key=brainrecord-2026
 ```
 
-Resuelve la última versión leyendo el manifiesto, así que el enlace no caduca
-al publicar versiones nuevas. Requiere un JWT válido: una app de grabación de
-pantalla no debería poder descargarla cualquiera que pase por la red.
+Se abre en el navegador, descarga el instalador y se ejecuta. No hay que
+copiar nada por USB ni ir equipo por equipo.
 
-**Windows SmartScreen avisará** al instalar, porque los instaladores no están
-firmados ("Windows protegió su PC" → *Más información* → *Ejecutar de todas
-formas"). Un certificado de firma cuesta unos 200-400 €/año y lo quitaría.
+### Por qué una clave y no el login
+
+El JWT no sirve aquí: solo existe **después** de instalar la app y hacer
+login, así que exigirlo haría imposible la primera instalación.
+
+La clave no es seguridad real —quien tenga el enlace descarga—, pero **el
+instalador no contiene secretos**: sin credenciales de la intranet la app no
+graba, no sube y no lee nada. El control de acceso de verdad está en el login.
+Quien lo descargue sin cuenta se queda mirando una pantalla de login.
+
+La clave está en `DOWNLOAD_KEY`, en el `.env` del concat-service. Para
+cambiarla, editarla ahí y reiniciar el contenedor.
+
+### Avisa del SmartScreen
+
+Los instaladores no están firmados, así que Windows mostrará **"Windows
+protegió su PC"**. Diles de antemano que es normal:
+
+> *Más información* → *Ejecutar de todas formas*
+
+Un certificado de firma cuesta unos 200-400 €/año y lo quitaría.
+
+### Mensaje listo para enviar
+
+> Instala Brainlabrecord desde este enlace:
+> http://192.168.1.175:9210/download?key=brainrecord-2026
+>
+> Windows dirá "Windows protegió su PC": pulsa *Más información* y
+> *Ejecutar de todas formas*. Es porque el instalador no está firmado.
+>
+> Al abrirla, entra con tu usuario de la intranet. A partir de ahí se
+> actualiza sola, no hay que volver a instalar nada.
 
 ---
 
