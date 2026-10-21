@@ -247,71 +247,71 @@
     .source-sub { font-size: 11.5px; color: rgba(255,255,255,0.42); margin: 0; }
     .source-head .icon-btn { flex-shrink: 0; }
 
-    /* ── Resumen de ajustes ── */
-    .source-settings {
-      background: rgba(255, 255, 255, 0.035);
-      border: 1px solid rgba(255, 255, 255, 0.07);
-      border-radius: 10px;
-      padding: 12px 13px;
-      margin-bottom: 16px;
+    /* ── Ajustes en la fila de pestañas ── */
+    .source-opts {
+      margin-left: auto;
+      display: flex; align-items: center; gap: 6px;
       flex-shrink: 0;
     }
-    .ss-row { display: flex; align-items: center; gap: 10px; }
-    .ss-label {
-      font-size: 10.5px; font-weight: 700;
-      letter-spacing: 1px; text-transform: uppercase;
-      color: rgba(255, 255, 255, 0.4);
-      flex-shrink: 0;
-    }
-    .ss-row select { flex-shrink: 0; }
-    .ss-specs {
-      font-size: 10.5px;
-      color: rgba(255, 255, 255, 0.35);
-      font-variant-numeric: tabular-nums;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
+    .source-opts select { font-size: 11.5px; padding: 5px 7px; }
 
-    .ss-toggles { display: flex; gap: 8px; margin-top: 11px; }
+    /* Icono con punto de estado: lo que importa aquí es verlo de un vistazo,
+       no leer su etiqueta. El nombre va en el tooltip. */
     .ss-chip {
       -webkit-app-region: no-drag;
-      flex: 1; min-width: 0;
-      display: flex; align-items: center; gap: 8px;
+      position: relative;
+      width: 30px; height: 28px;
+      display: flex; align-items: center; justify-content: center;
       background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 8px;
-      color: rgba(255, 255, 255, 0.45);
-      font-family: inherit; font-size: 11.5px;
-      text-align: left;
-      padding: 8px 11px;
+      color: rgba(255, 255, 255, 0.4);
       cursor: pointer;
-      transition: background 0.14s, border-color 0.14s, color 0.14s;
+      transition: background 0.14s, color 0.14s, border-color 0.14s;
     }
-    .ss-chip:hover { background: rgba(255, 255, 255, 0.08); }
-    .ss-chip svg { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.7; }
-    .ss-chip > span:not(.ss-state) {
-      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .ss-state {
-      font-size: 10px; font-weight: 600;
-      border-radius: 5px; padding: 2px 7px;
-      background: rgba(255, 255, 255, 0.07);
-      flex-shrink: 0;
-    }
-    /* Activo en verde: el fallo caro es empezar con el micro apagado sin
-       haberlo notado. */
+    .ss-chip:hover { background: rgba(255, 255, 255, 0.1); color: rgba(255,255,255,0.8); }
+    .ss-chip svg { width: 14px; height: 14px; }
+
+    /* Activo */
     .ss-chip.on {
-      background: rgba(74, 222, 128, 0.08);
-      border-color: rgba(74, 222, 128, 0.3);
-      color: rgba(255, 255, 255, 0.85);
+      border-color: rgba(74, 222, 128, 0.35);
+      color: #4ade80;
     }
-    .ss-chip.on svg { opacity: 1; color: #4ade80; }
-    .ss-chip.on .ss-state { background: rgba(74, 222, 128, 0.18); color: #4ade80; }
+
+    .ss-dot {
+      position: absolute;
+      top: -4px; right: -4px;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      border: 2px solid #1a1a1e;   /* recorta el punto sobre el borde del chip */
+      background: rgba(255, 255, 255, 0.18);
+      transition: background 0.15s;
+    }
+    .ss-chip.on .ss-dot { background: #4ade80; }
+
+    /* Apagado: icono atenuado, tachado, punto y borde apagados. El punto solo
+       no basta para verlo de un golpe, y empezar a grabar con el micro
+       apagado sin notarlo es el fallo más caro.
+       Van DESPUÉS de .on para que ganen por orden en cascada. */
+    .ss-chip:not(.on) {
+      color: rgba(255, 255, 255, 0.3);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+    .ss-chip:not(.on)::after {
+      content: '';
+      position: absolute;
+      left: 6px; right: 6px; top: 50%;
+      height: 1.5px;
+      background: rgba(255, 255, 255, 0.45);
+      transform: rotate(-45deg);
+      border-radius: 1px;
+    }
 
     .btn-confirm.start .rec-ico { width: 11px; height: 11px; margin-right: 7px; }
     .btn-confirm.start { display: flex; align-items: center; justify-content: center; }
 
     .source-tabs {
-      display: flex; gap: 4px;
+      display: flex; align-items: center; gap: 4px;
       margin-bottom: 12px;
       flex-shrink: 0;
     }
@@ -1272,43 +1272,33 @@
         <div class="source-tabs">
           <button class="source-tab active" data-kind="screen">Pantallas</button>
           <button class="source-tab" data-kind="window">Aplicaciones</button>
-        </div>
 
-        <div class="source-grid" id="sourceGrid">
-          <div class="empty">Buscando…</div>
-        </div>
-
-        <!-- Resumen de lo que se va a grabar. Los ajustes finos siguen en la
-             pestaña Calidad: aquí solo lo que conviene confirmar de un vistazo
-             antes de empezar. -->
-        <div class="source-settings">
-          <div class="ss-row">
-            <span class="ss-label">Calidad</span>
+          <!-- Ajustes a la derecha, en la misma fila: el perfil como
+               desplegable y el audio reducido a icono + punto de estado. -->
+          <div class="source-opts">
             <select id="ssProfile">
               <option value="light">Ligera</option>
               <option value="balanced">Equilibrada</option>
               <option value="high">Alta</option>
               <option value="custom" hidden>Personalizada</option>
             </select>
-            <span class="ss-specs" id="ssSpecs">—</span>
-          </div>
-
-          <div class="ss-toggles">
-            <button class="ss-chip" id="ssAudio">
+            <button class="ss-chip" id="ssAudio" title="Audio del sistema">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M11 5 6 9H2v6h4l5 4V5Z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a9 9 0 0 1 0 14"/>
               </svg>
-              <span>Audio del sistema</span>
-              <span class="ss-state">—</span>
+              <span class="ss-dot"></span>
             </button>
-            <button class="ss-chip" id="ssMic">
+            <button class="ss-chip" id="ssMic" title="Micrófono">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 17v4"/>
               </svg>
-              <span>Micrófono</span>
-              <span class="ss-state">—</span>
+              <span class="ss-dot"></span>
             </button>
           </div>
+        </div>
+
+        <div class="source-grid" id="sourceGrid">
+          <div class="empty">Buscando…</div>
         </div>
 
         <div class="dialog-actions">
@@ -1522,15 +1512,14 @@
       customOpt.hidden = Boolean(match);
       profileSel.value = match ? match[0] : 'custom';
 
-      document.getElementById('ssSpecs').textContent =
-        `${config.fps} fps · ${Math.round((config.resolutionScale ?? 0.75) * 100)} %`;
-
+      // El estado va en el tooltip: el punto dice si está activo, el título
+      // dice de qué.
       const audioChip = document.getElementById('ssAudio');
       const micChip = document.getElementById('ssMic');
       audioChip.classList.toggle('on', config.captureAudio);
       micChip.classList.toggle('on', config.captureMic);
-      audioChip.querySelector('.ss-state').textContent = config.captureAudio ? 'activo' : 'apagado';
-      micChip.querySelector('.ss-state').textContent = config.captureMic ? 'activo' : 'apagado';
+      audioChip.title = `Audio del sistema: ${config.captureAudio ? 'activo' : 'apagado'}`;
+      micChip.title = `Micrófono: ${config.captureMic ? 'activo' : 'apagado'}`;
     }
 
     document.getElementById('ssProfile').addEventListener('change', async (e) => {
