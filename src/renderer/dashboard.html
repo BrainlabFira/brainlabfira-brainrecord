@@ -592,10 +592,44 @@
     }
     .lib-user-filter input:focus { border-color: rgba(255, 255, 255, 0.3); }
     .lib-user-filter input::placeholder { color: rgba(255, 255, 255, 0.32); }
-    /* Oculta la flecha nativa del datalist, que desentona con el resto. */
-    .lib-user-filter input::-webkit-calendar-picker-indicator {
-      opacity: 0; position: absolute; right: 0; width: 22px; cursor: pointer;
+    /* Sugerencias propias, con el mismo lenguaje que el menú de cuenta. */
+    .user-list {
+      position: absolute;
+      top: calc(100% + 5px); right: 0;
+      width: 230px;
+      max-height: 190px;
+      overflow-y: auto;
+      background: rgba(22, 22, 26, 0.98);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 9px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+      padding: 5px;
+      z-index: 40;
+      display: none;
     }
+    .user-list.open { display: block; }
+    .user-list::-webkit-scrollbar { width: 5px; }
+    .user-list::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.14); border-radius: 3px;
+    }
+
+    .user-option {
+      display: block; width: 100%;
+      background: transparent; border: none;
+      color: rgba(255, 255, 255, 0.78);
+      font-family: inherit; font-size: 11.5px;
+      text-align: left;
+      padding: 7px 9px;
+      border-radius: 6px;
+      cursor: pointer;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      transition: background 0.12s, color 0.12s;
+    }
+    .user-option:hover,
+    .user-option.active { background: rgba(255, 255, 255, 0.09); color: #fff; }
+    .user-list .empty { font-size: 11px; padding: 9px; }
 
     .user-clear {
       -webkit-app-region: no-drag;
@@ -1023,6 +1057,25 @@
       color: rgba(255, 255, 255, 0.45);
     }
     .footer .spacer { flex: 1; }
+
+    /* Los dos laterales ocupan lo mismo, así el logo queda centrado respecto
+       a la ventana y no respecto al hueco que deja la versión. */
+    .footer-side { flex: 1; min-width: 0; }
+    .footer-version {
+      text-align: right;
+      font-size: 10.5px;
+      color: rgba(255, 255, 255, 0.3);
+      font-variant-numeric: tabular-nums;
+    }
+    /* El PNG viene recortado a su contenido (1018x184), así que la altura se
+       aprovecha entera: antes era 1920x1080 con un 91 % de transparencia y el
+       logo salía diminuto. */
+    .footer-logo {
+      height: 13px;
+      width: auto;
+      flex-shrink: 0;
+      opacity: 0.85;
+    }
     .link-btn {
       -webkit-app-region: no-drag;
       background: transparent; border: none;
@@ -1201,10 +1254,12 @@
                    Es un input con datalist para poder escribir el nombre
                    en vez de buscarlo en una lista larga. -->
               <div class="lib-user-filter" id="libUserWrap" hidden>
-                <input type="text" id="libUser" list="libUserList"
-                       placeholder="Todos los usuarios" autocomplete="off" />
-                <datalist id="libUserList"></datalist>
+                <input type="text" id="libUser" placeholder="Todos los usuarios"
+                       autocomplete="off" spellcheck="false" />
                 <button class="user-clear" id="libUserClear" title="Quitar filtro" hidden>&#10005;</button>
+                <!-- Lista propia en vez de <datalist>: la nativa de Windows
+                     sale con fondo blanco y no admite CSS. -->
+                <div class="user-list" id="libUserList"></div>
               </div>
               <button class="icon-btn" id="libRefresh" title="Actualizar">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1398,9 +1453,11 @@
     </div>
 
     <div class="footer">
-      <span id="footerVersion">Brainlabrecord</span>
-      <div class="spacer"></div>
-      <span id="footerHint"></span>
+      <!-- Tres columnas iguales para que el logo quede centrado de verdad,
+           independientemente de lo que ocupe la versión a la derecha. -->
+      <span class="footer-side"></span>
+      <img class="footer-logo" src="../../assets/logo_powered.png" alt="" />
+      <span class="footer-side footer-version" id="footerVersion"></span>
     </div>
 
     <!-- Selector de fuente: se elige viendo la miniatura, no leyendo nombres
@@ -1857,16 +1914,58 @@
     // escrito a su id.
     let libUsers = [];
 
+    const userListEl = document.getElementById('libUserList');
+    const libUserClear = document.getElementById('libUserClear');
+
     function renderUserFilter(users) {
       libUsers = users ?? [];
       // El filtro solo tiene sentido para quien ve grabaciones de varias
       // personas; a quien solo ve las suyas no le aporta nada.
       document.getElementById('libUserWrap').hidden = !isAdminUser;
-
-      document.getElementById('libUserList').innerHTML = libUsers
-        .map((u) => `<option value="${esc(u.name)}"></option>`)
-        .join('');
     }
+
+    // Pinta las sugerencias que coinciden con lo escrito.
+    function showUserOptions() {
+      const q = libUser.value.trim().toLowerCase();
+      const matches = q
+        ? libUsers.filter((u) => u.name.toLowerCase().includes(q))
+        : libUsers;
+
+      if (matches.length === 0) {
+        userListEl.innerHTML = '<div class="empty">Sin coincidencias</div>';
+      } else {
+        userListEl.innerHTML = matches
+          .map((u) => `<button class="user-option" data-name="${esc(u.name)}">${esc(u.name)}</button>`)
+          .join('');
+      }
+      userListEl.classList.add('open');
+    }
+
+    function hideUserOptions() { userListEl.classList.remove('open'); }
+
+    userListEl.addEventListener('mousedown', (e) => {
+      // mousedown y no click: el blur del input llegaría antes y cerraría la
+      // lista sin que la selección se registrase.
+      const opt = e.target.closest('.user-option');
+      if (!opt) return;
+      e.preventDefault();
+      libUser.value = opt.dataset.name;
+      libUserClear.hidden = false;
+      hideUserOptions();
+      loadLibrary();
+    });
+
+    libUser.addEventListener('focus', showUserOptions);
+    libUser.addEventListener('blur', () => setTimeout(hideUserOptions, 120));
+
+    // Escape cierra solo la lista, sin propagar: si no, cerraría también el
+    // menú de cuenta o un diálogo que hubiera detrás.
+    libUser.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && userListEl.classList.contains('open')) {
+        e.stopPropagation();
+        hideUserOptions();
+      }
+    });
 
     // Devuelve el id del usuario cuyo nombre coincide con lo escrito. Admite
     // coincidencia parcial: escribir "beatriz" basta, no hay que teclear el
@@ -1968,18 +2067,12 @@
 
     // El filtro por usuario se aplica sobre lo ya cargado, así que repintar
     // basta: no hace falta volver a pedir al servidor en cada tecla.
-    const libUserClear = document.getElementById('libUserClear');
     let userFilterTimer = null;
     libUser.addEventListener('input', () => {
       libUserClear.hidden = libUser.value === '';
+      showUserOptions();   // refrescar las sugerencias mientras escribe
       clearTimeout(userFilterTimer);
       userFilterTimer = setTimeout(loadLibrary, 250);
-    });
-    // Al elegir del datalist salta 'change' pero no 'input', así que la X hay
-    // que actualizarla también aquí.
-    libUser.addEventListener('change', () => {
-      libUserClear.hidden = libUser.value === '';
-      loadLibrary();
     });
 
     libUserClear.addEventListener('click', () => {

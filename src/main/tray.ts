@@ -3,6 +3,7 @@ import type { Tray as TrayType, Menu as MenuType } from 'electron';
 const { Tray, Menu, app, nativeImage } = require('electron') as typeof import('electron');
 import path from 'path';
 import { SHORTCUT_HELP } from './shortcuts';
+import { appVersion } from './updater';
 
 export type TrayState = 'idle' | 'recording' | 'error' | 'connecting';
 
@@ -60,7 +61,7 @@ function buildContextMenu(): MenuType {
     {
       // Versión real, no escrita a mano: con las actualizaciones automáticas
       // un número fijo quedaría desfasado en cuanto se publique otra.
-      label: `${APP_NAME} v${app.getVersion()}`,
+      label: `${APP_NAME} v${appVersion()}`,
       enabled: false,
     },
     { type: 'separator' },

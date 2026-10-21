@@ -32,9 +32,23 @@ export interface UpdateStatus {
   waitingForIdle: boolean;
 }
 
+// Versión de la app. En el empaquetado app.getVersion() devuelve la del
+// package.json, pero SIN empaquetar devuelve la de Electron (33.4.11), que no
+// significa nada para quien mira la interfaz.
+export function appVersion(): string {
+  if (app.isPackaged) return app.getVersion();
+  try {
+    // __dirname es dist/main en desarrollo
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('../../package.json').version as string;
+  } catch {
+    return app.getVersion();
+  }
+}
+
 let status: UpdateStatus = {
   state: 'idle',
-  currentVersion: app.getVersion(),
+  currentVersion: appVersion(),
   newVersion: null,
   progressPercent: 0,
   error: null,
