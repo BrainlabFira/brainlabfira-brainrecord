@@ -124,6 +124,36 @@ export async function initSupabase(session: SessionData): Promise<void> {
 
 // Devuelve un access_token vigente para autenticarse ante el concat-service.
 // Refresca proactivamente si quedan <60s para que caduque.
+// Refresco en vuelo. Supabase ROTA el refresh_token en cada refresco: el que
+// se usa queda muerto al instante. Si dos subidas piden token a la vez, ambas
+// entran aquí con el mismo refresh_token, la primera lo consume y la segunda
+// recibe "Invalid Refresh Token: Already Used" — y la sesión queda rota para
+// siempre, aunque las credenciales fueran correctas.
+//
+// Con esta promesa compartida solo hay un refresco a la vez: el resto espera
+// su resultado en vez de lanzar el suyo.
+let refreshInFlight: Promise<string | null> | null = null;
+
+// La sesión murió de verdad (refresh token inválido o consumido). No se
+// arregla reintentando: hay que volver a iniciar sesión.
+type SessionDeadListener = (reason: string) => void;
+const sessionDeadListeners: SessionDeadListener[] = [];
+
+export function onSessionDead(fn: SessionDeadListener): void {
+  sessionDeadListeners.push(fn);
+}
+
+function announceSessionDead(reason: string): void {
+  log('[supabase] Sesión no recuperable:', reason);
+  for (const fn of sessionDeadListeners) {
+    try {
+      fn(reason);
+    } catch (err) {
+      log('[supabase] Error en listener de sesión muerta:', err);
+    }
+  }
+}
+
 export async function getFreshAccessToken(): Promise<string | null> {
   if (!supabase || !currentRefreshToken) return currentAccessToken;
 
@@ -132,21 +162,42 @@ export async function getFreshAccessToken(): Promise<string | null> {
     return currentAccessToken; // aún válido
   }
 
-  // Caducado o a punto de caducar → refrescar
-  const { data, error } = await supabase.auth.refreshSession({
-    refresh_token: currentRefreshToken,
-  });
-  if (error || !data.session) {
-    console.error('[supabase] No se pudo refrescar el token:', error?.message);
-    return currentAccessToken; // devolvemos el viejo por si aún sirve
-  }
+  // Ya hay un refresco en marcha: esperar a ese en vez de consumir el
+  // refresh_token por segunda vez.
+  if (refreshInFlight) return refreshInFlight;
 
-  await persistTokens(
-    data.session.access_token,
-    data.session.refresh_token,
-    data.session.expires_at ?? 0
-  );
-  return currentAccessToken;
+  refreshInFlight = (async () => {
+    try {
+      const { data, error } = await supabase!.auth.refreshSession({
+        refresh_token: currentRefreshToken!,
+      });
+
+      if (error || !data.session) {
+        const msg = error?.message ?? 'Supabase no devolvió sesión';
+        console.error('[supabase] No se pudo refrescar el token:', msg);
+
+        // Token muerto: ningún reintento lo va a resucitar. Avisar para que la
+        // app pare y pida login, en vez de seguir grabando y perder chunks.
+        if (/already used|invalid|expired|not found|revoked/i.test(msg)) {
+          announceSessionDead(msg);
+          return null;
+        }
+        // Error de red o del servidor: el token viejo puede seguir sirviendo.
+        return currentAccessToken;
+      }
+
+      await persistTokens(
+        data.session.access_token,
+        data.session.refresh_token,
+        data.session.expires_at ?? 0
+      );
+      return currentAccessToken;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
 }
 
 // Cierra la sesión en memoria. Debe llamarse SIEMPRE que se borre session.enc:
@@ -157,6 +208,9 @@ export function resetSupabaseSession(): void {
   currentAccessToken = null;
   currentRefreshToken = null;
   accessTokenExpiresAt = 0;
+  // Si no se descarta, un refresco en vuelo volvería a escribir session.enc
+  // con persistTokens y resucitaría la sesión recién borrada.
+  refreshInFlight = null;
   supabase = null;
 }
 

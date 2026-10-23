@@ -11,6 +11,7 @@ import {
   resetSupabaseSession,
   getCurrentUserEmail,
   getFreshAccessToken,
+  onSessionDead,
 } from './supabase';
 import {
   startRecording,
@@ -613,6 +614,39 @@ async function bootstrap(): Promise<void> {
         message: 'La grabación se ha detenido porque no se pudo capturar la pantalla.',
         detail: message,
       });
+    })();
+  });
+
+  // La sesión murió y no se recupera reintentando. Hay que parar: seguir
+  // grabando solo acumula fragmentos que nunca se podrán subir, y así fue
+  // como se perdió un chunk tras diez intentos fallidos.
+  let handlingDeadSession = false;
+  onSessionDead((reason) => {
+    if (handlingDeadSession) return;   // un solo aviso, aunque fallen varias subidas
+    handlingDeadSession = true;
+
+    void (async () => {
+      const wasRecording = getRecordingStatus().isRecording;
+      if (wasRecording) {
+        await stopRecording();
+        updateTrayState('idle');
+        panelWindow?.hide();
+      }
+
+      notifyAlert({
+        level: 'critical',
+        title: 'Sesión caducada',
+        message: wasRecording
+          ? 'La grabación se ha detenido porque tu sesión ha caducado. '
+            + 'Vuelve a iniciar sesión para continuar.'
+          : 'Tu sesión ha caducado. Vuelve a iniciar sesión.',
+        detail: reason,
+      });
+
+      // Los fragmentos ya grabados se quedan en disco y se recuperan al
+      // volver a entrar (ver recoverPendingChunks).
+      await doLogout();
+      handlingDeadSession = false;
     })();
   });
 

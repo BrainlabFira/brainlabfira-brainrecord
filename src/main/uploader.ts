@@ -17,6 +17,10 @@ const RETRY_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 
 const queue: ChunkJob[] = [];
 let retryTimer: NodeJS.Timeout | null = null;
+// La última subida falló por falta de sesión, no por un problema del fichero
+// ni de la red. Distinguirlo importa: un chunk sano no debe descartarse solo
+// porque el token haya caducado.
+let lastFailureWasAuth = false;
 let uploadingNow = 0;
 let uploadedTotal = 0;
 let failedTotal = 0;
@@ -126,6 +130,11 @@ async function processQueue(): Promise<void> {
 
     if (success) {
       uploadedTotal++;
+    } else if (lastFailureWasAuth) {
+      // Sin sesión válida no hay reintento que valga, pero el fichero está
+      // sano en disco: se conserva sin gastar intentos. Al volver a iniciar
+      // sesión, recoverPendingChunks lo reencola.
+      failed.push(job);
     } else {
       job.retries++;
       if (job.retries < MAX_RETRIES) {
@@ -166,9 +175,12 @@ async function uploadChunk(job: ChunkJob): Promise<boolean> {
 
   try {
     // 1. Token vigente del empleado (Supabase lo refresca si caducó)
+    lastFailureWasAuth = false;
+
     const token = await getFreshAccessToken();
     if (!token) {
       console.error('[uploader] No hay token de sesión — no se puede subir');
+      lastFailureWasAuth = true;
       return false;
     }
 
@@ -185,6 +197,10 @@ async function uploadChunk(job: ChunkJob): Promise<boolean> {
     if (!presignResp.ok) {
       const detail = await presignResp.text();
       console.error(`[uploader] No se pudo obtener URL de subida (${presignResp.status}): ${detail}`);
+      // 401/403 = problema de sesión, no del fichero ni de la red.
+      if (presignResp.status === 401 || presignResp.status === 403) {
+        lastFailureWasAuth = true;
+      }
       return false;
     }
 
