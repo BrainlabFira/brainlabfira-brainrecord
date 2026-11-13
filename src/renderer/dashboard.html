@@ -709,6 +709,24 @@
     .lib-btn:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
     .lib-btn svg { width: 11px; height: 11px; }
 
+    .lib-ai { position: relative; overflow: hidden; min-width: 165px; max-width: 185px;
+      flex-direction: column; align-items: flex-start; gap: 3px; border-color: rgba(140,170,255,.4); }
+    .lib-ai .ai-fill { position: absolute; inset: 0 auto 0 0; background: rgba(130,160,255,.18);
+      transition: width .4s ease; pointer-events: none; }
+    .lib-ai .ai-label, .lib-ai .ai-detail { position: relative; z-index: 1; }
+    .lib-ai .ai-detail { font-size: 9px; opacity: .75; max-width: 160px; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap; }
+    .lib-ai .ai-detail:empty { display: none; }
+    .lib-ai.ai-busy { cursor: progress; }
+    .lib-ai.ai-done { border-color: rgba(100,210,150,.5); }
+    .lib-ai.ai-error { border-color: rgba(240,130,130,.5); }
+    .lib-ai.ai-indeterminate .ai-fill { width: 40% !important; animation: ai-slide 1.5s ease-in-out infinite; }
+    .lib-ai:focus-visible { outline: 2px solid #a4bdff; outline-offset: 2px; }
+    @keyframes ai-slide { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
+    @media (prefers-reduced-motion: reduce) {
+      .lib-ai .ai-fill { transition: none; animation: none !important; }
+    }
+
     .lib-error {
       font-size: 11.5px;
       color: #fca5a5;
@@ -1564,6 +1582,7 @@
     </div>
   </div>
 
+  <script src="transcription.js"></script>
   <script>
     const { ipcRenderer } = require('electron');
 
@@ -1981,7 +2000,10 @@
       return partial.length === 1 ? String(partial[0].id) : null;
     }
 
+    const transcriptionButtons = window.createTranscriptionButtons(libList, ipcRenderer);
+
     function renderLibrary(payload) {
+      transcriptionButtons.update([]);
       if (payload.error) {
         libList.innerHTML = `<div class="lib-error">${esc(payload.error)}</div>`;
         return;
@@ -2024,6 +2046,12 @@
             </div>
           </div>
           <div class="lib-btns">
+            <button class="lib-btn lib-ai" data-act="transcribe"
+                    data-u="${esc(r.userId)}" data-f="${esc(r.fecha)}" data-r="${esc(r.recId)}"
+                    data-chunks="${esc(r.chunks)}" data-bytes="${esc(r.bytes)}">
+              <span class="ai-fill" aria-hidden="true"></span>
+              <span class="ai-label">Transcribir con IA</span><span class="ai-detail"></span>
+            </button>
             <button class="lib-btn" data-act="view"
                     data-u="${esc(r.userId)}" data-f="${esc(r.fecha)}" data-r="${esc(r.recId)}"
                     data-n="${esc(r.userName ?? '')}">
@@ -2039,6 +2067,7 @@
             </button>
           </div>
         </div>`).join('');
+      transcriptionButtons.update(list);
     }
 
     // Se descubre en el arranque (ver más abajo). Decide si se piden las
@@ -2103,7 +2132,7 @@
     // Delegación: los botones se crean al pintar la lista.
     libList.addEventListener('click', (e) => {
       const btn = e.target.closest('.lib-btn');
-      if (!btn) return;
+      if (!btn || btn.dataset.act === 'transcribe') return;
       const rec = {
         userId: btn.dataset.u,
         fecha: btn.dataset.f,

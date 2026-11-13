@@ -254,3 +254,64 @@ Seguir este orden estrictamente — cada fase desbloquea la siguiente:
 - [ ] Confirmar espacio disponible en disco del servidor para los videos
 - [ ] Confirmar si se necesita firma de código para el .exe (evita alertas de Windows Defender)
 - [ ] Futuro: planificar acceso VPN para empleados en teletrabajo
+
+## Desarrollo local: integración con AI Transcriptor
+
+`npm ci` instala las dependencias fijadas. `npm run dev` detecta el sistema:
+Windows conserva el comando original (`npm run dev:windows`); Linux/macOS usan
+un runner separado con copia nativa y limpieza de `ELECTRON_RUN_AS_NODE`.
+También existen `dev:linux` y `dev:mac`. `npm run build` compila y copia los
+renderers sin abrir la app. El instalador (`npm run dist`) sigue siendo Windows.
+No hay recarga automática: reinicia el comando tras cambiar código.
+
+La Biblioteca incorpora **Transcribir con IA** por grabación. La app obtiene el
+MP4 desde el endpoint existente `/concat/:userId/:fecha/:recId` y lo transmite a
+FastAPI sin cargarlo entero en memoria ni guardarlo en otro fichero local.
+El servicio de concatenación sigue siendo responsable de juntar los fragmentos
+y de su caché en MinIO. No se modifican el servidor ni las credenciales de MinIO.
+
+Para el desarrollo aislado de Transcriptor (ver su `compose.dev.yaml`), añade a
+un `.env` local de Brainrecord:
+
+```env
+TRANSCRIPTOR_API_URL=http://192.168.1.171:18766
+TRANSCRIPTOR_PUBLIC_URL=http://192.168.1.171:18766
+TRANSCRIPTOR_API_KEY=<mismo valor que BRAINRECORD_API_KEY en Transcriptor>
+```
+
+Usa `127.0.0.1:18766` si ambos procesos están en este ordenador y Transcriptor
+solo escucha en localhost. La URL pública debe ser accesible desde el navegador
+del usuario. Para la futura instancia normal usa el puerto 18765. Las claves
+reales van en `.env`, nunca en Git. No copies los placeholders de Supabase de
+`.env.example` sin sustituirlos: prevalecen sobre los valores predeterminados.
+Los valores públicos de Supabase y `UPLOAD_SERVICE_URL` ya tienen defaults.
+
+El API de integración está protegido por una clave compartida. No se envía el
+JWT de Supabase a Transcriptor. Su interfaz web conserva el modelo existente de
+acceso en una LAN de confianza; los enlaces no son permisos por usuario.
+
+El progreso distingue envío de bytes y análisis de secciones completadas. La
+estimación empieza cuando hay tiempos medidos y excluye cola/carga inicial y
+resumen final. Los estados sobreviven a reinicios por su asociación persistente
+en Transcriptor. Un doble clic no duplica trabajos. Errores de conexión permiten
+reconsultar; trabajos fallidos/cancelados se reanudan con las secciones guardadas.
+
+Se impide enviar mientras la grabación local termina o quedan subidas, y se
+revalida el manifiesto antes del envío. El servidor actual no ofrece una marca
+autoritativa de grabación finalizada para otros ordenadores: un administrador
+debe esperar a que termine una grabación remota. Si llegan más fragmentos, su
+manifiesto cambia y se genera una nueva asociación al transcribir de nuevo.
+
+Comprobaciones:
+
+```sh
+npm test
+npm run typecheck
+# Con una instalación existente de Playwright (exporta chromium):
+PLAYWRIGHT_PACKAGE=/ruta/a/playwright node tests/transcription-ui.cjs
+```
+
+`tests/transcription-e2e.cjs` admite `TRANSCRIPTOR_TEST_API_URL` y
+`TRANSCRIPTOR_TEST_API_KEY` y debe apuntar **solo a un API desechable**. Genera
+un MP4 con audio sintético y verifica el puente con FastAPI real, sin ejecutar
+inferencia. Los tests unitarios de Transcriptor cubren el worker por separado.

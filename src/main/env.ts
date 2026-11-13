@@ -22,9 +22,7 @@ export function loadEnv(): void {
 
   // 2. .env local (solo en desarrollo) — sobrescribe los defaults
   const envPath = path.join(process.cwd(), '.env');
-  if (!fs.existsSync(envPath)) return;
-
-  const lines = fs.readFileSync(envPath, 'utf-8').split('\n');
+  const lines = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8').split('\n') : [];
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
@@ -33,5 +31,11 @@ export function loadEnv(): void {
     const key = trimmed.slice(0, eqIndex).trim();
     const value = trimmed.slice(eqIndex + 1).trim().replace(/^["']|["']$/g, '');
     if (key) process.env[key] = value; // el .env local tiene prioridad en dev
+  }
+
+  // Callers append routes with a leading slash. Avoid //recordings, which the
+  // recording service treats as a different route and returns 404 for.
+  for (const key of ['UPLOAD_SERVICE_URL', 'MINIO_CONSOLE_URL', 'TRANSCRIPTOR_API_URL', 'TRANSCRIPTOR_PUBLIC_URL']) {
+    if (process.env[key]) process.env[key] = process.env[key]!.trim().replace(/\/+$/, '');
   }
 }

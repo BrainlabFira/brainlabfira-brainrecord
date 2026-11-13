@@ -5,11 +5,16 @@
     "author": "Brainlab",
     "main": "dist/main/index.js",
     "scripts": {
-        "dev": "tsc && xcopy /E /I /Y src\\renderer dist\\renderer > nul && set ELECTRON_RUN_AS_NODE=&& electron .",
-        "build": "tsc && xcopy /E /I /Y src\\renderer dist\\renderer > nul",
+        "dev": "node scripts/run.js dev",
+        "build": "node scripts/run.js build",
         "dist": "tsc && xcopy /E /I /Y src\\renderer dist\\renderer > nul && electron-builder",
         "publish": "node scripts/publish.js",
-        "typecheck": "tsc --noEmit"
+        "typecheck": "tsc --noEmit",
+        "dev:windows": "tsc && xcopy /E /I /Y src\\renderer dist\\renderer > nul && set ELECTRON_RUN_AS_NODE=&& electron .",
+        "build:windows": "tsc && xcopy /E /I /Y src\\renderer dist\\renderer > nul",
+        "dev:linux": "node scripts/run.js native",
+        "dev:mac": "node scripts/run.js native",
+        "test": "npm run build && node --test tests/*.test.cjs"
     },
     "dependencies": {
         "@supabase/supabase-js": "^2.45.0",

@@ -47,6 +47,7 @@ import {
 import { loadSession, saveSession, clearSession, SessionData } from './auth';
 import { log, initLogPath } from './logger';
 import { SHORTCUTS } from './shortcuts';
+import { RecordingRef, TranscriptionClient, recordingKey, transcriptUrl, validateRecording } from './transcription';
 
 loadEnv();
 
@@ -78,6 +79,17 @@ let panelWindow: BW | null = null;
 let playerWindow: BW | null = null;
 
 let currentSession: SessionData | null = null;
+const transcription = new TranscriptionClient((actor, rec, state) => {
+  if (currentSession?.authUserId === actor) broadcast('transcription:state', { key: recordingKey(rec), state });
+});
+function transcriptionConfig() {
+  return {
+    apiUrl: process.env.TRANSCRIPTOR_API_URL ?? 'http://192.168.1.171:18765',
+    publicUrl: process.env.TRANSCRIPTOR_PUBLIC_URL ?? process.env.TRANSCRIPTOR_API_URL ?? 'http://192.168.1.171:18765',
+    key: process.env.TRANSCRIPTOR_API_KEY ?? '',
+    recordingUrl: process.env.UPLOAD_SERVICE_URL ?? 'http://192.168.1.175:9210',
+  };
+}
 let updateTimer: NodeJS.Timeout | null = null;
 // Atajos que el sistema rechazó porque otra app ya los tenía registrados.
 // Se muestran en el dashboard: si no, el empleado pulsa y no pasa nada.
@@ -739,6 +751,52 @@ async function bootstrap(): Promise<void> {
   });
 
   // ── IPC: biblioteca de grabaciones ──
+  ipcMain.handle('transcription:status', async (_event, rec: RecordingRef) => {
+    if (!currentSession) return { status: 'connection_error', error: 'Sin sesión activa' };
+    try {
+      return await transcription.status(currentSession.authUserId, rec, transcriptionConfig());
+    } catch (err) { return { status: 'connection_error', error: (err as Error).message }; }
+  });
+  ipcMain.handle('transcription:start', async (_event, rec: RecordingRef) => {
+    try {
+      if (!currentSession) throw new Error('Sin sesión activa');
+      validateRecording(rec);
+      const recording = getRecordingStatus();
+      const uploads = getUploadStatus();
+      if (recording.isFinalizing || (recording.isRecording && recording.recId === rec.recId)
+          || uploads.pending + uploads.uploading > 0) {
+        throw new Error('Espera a que termine la grabación y se suban todos los fragmentos');
+      }
+      const actor = currentSession.authUserId;
+      return await transcription.start(actor, rec, transcriptionConfig(), async () => {
+        if (currentSession?.authUserId !== actor) return null;
+        const token = await getFreshAccessToken();
+        if (!token) return null;
+        // Recheck the authoritative manifest: a library row may predate the final upload.
+        const all = String(currentSession?.numericUserId) !== rec.userId ? '?all=1' : '';
+        const response = await fetch(`${transcriptionConfig().recordingUrl}/recordings${all}`, {
+          headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000), redirect: 'error',
+        });
+        if (!response.ok) throw new Error(`No se pudo verificar la grabación (${response.status})`);
+        const payload = await response.json() as { recordings?: RecordingRef[] };
+        const latest = payload.recordings?.find(row => String(row.userId) === rec.userId && row.fecha === rec.fecha && row.recId === rec.recId);
+        if (!latest || Number(latest.chunks) !== rec.chunks || Number(latest.bytes) !== rec.bytes) {
+          throw new Error('La grabación ha cambiado. Actualiza la biblioteca antes de transcribir');
+        }
+        if (currentSession?.authUserId !== actor) return null;
+        return token;
+      });
+    } catch (err) { return { status: 'connection_error', error: (err as Error).message }; }
+  });
+  ipcMain.handle('transcription:open', async (_event, rec: RecordingRef) => {
+    try {
+      if (!currentSession) throw new Error('Sin sesión activa');
+      const state = await transcription.status(currentSession.authUserId, rec, transcriptionConfig(), true);
+      if (state.status !== 'completed' || !state.jobId) throw new Error(state.error ?? 'La transcripción aún no está lista');
+      await shell.openExternal(transcriptUrl(transcriptionConfig(), state.jobId));
+      return { ok: true };
+    } catch (err) { return { error: (err as Error).message }; }
+  });
   // El concat-service decide qué puede ver cada uno a partir del JWT: aquí solo
   // reenviamos la respuesta. Ocultar la pestaña en el cliente es cosmético.
   ipcMain.handle('recordings:list', async (_event, { all, q }: { all: boolean; q?: string }) => {

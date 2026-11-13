@@ -76,6 +76,7 @@ export function applyResolutionScale(): void {
 
 let config: RecordingConfig = { ...DEFAULT_CONFIG };
 let isRecording = false;
+let isFinalizing = false;
 let currentRecId: string | null = null;
 let currentUserId: string | null = null;
 // Fecha de INICIO de la grabación, fijada una sola vez. Antes cada chunk
@@ -94,6 +95,7 @@ let mainWindow: BW | null = null;
 // Suscriptores a los cambios de estado (panel flotante, dashboard, bandeja).
 export interface RecordingStatus {
   isRecording: boolean;
+  isFinalizing: boolean;
   recId: string | null;
   startedAtMs: number;
   elapsedSec: number;
@@ -130,6 +132,7 @@ export function getFreeDiskBytes(): number | null {
 export function getRecordingStatus(): RecordingStatus {
   return {
     isRecording,
+    isFinalizing,
     recId: currentRecId,
     startedAtMs,
     elapsedSec: isRecording ? Math.floor((Date.now() - startedAtMs) / 1000) : 0,
@@ -282,6 +285,7 @@ export async function startRecording(
   source?: { id: string; width: number; height: number } | null
 ): Promise<string | null> {
   if (isRecording) return currentRecId;
+  if (isFinalizing) return null;
 
   // La fuente elegida manda sobre la pantalla principal. Una ventana no mide
   // lo que el monitor, así que el tamaño de captura sale de ella y no de
@@ -316,6 +320,7 @@ export async function stopRecording(): Promise<void> {
   if (!isRecording) return;
 
   isRecording = false;
+  isFinalizing = true;
 
   if (chunkTimer) {
     clearTimeout(chunkTimer);
@@ -323,7 +328,11 @@ export async function stopRecording(): Promise<void> {
   }
 
   // Stop current chunk and upload it
-  await stopCurrentChunk();
+  try {
+    await stopCurrentChunk();
+  } finally {
+    isFinalizing = false;
+  }
   log('[recorder] Grabación detenida');
   emitStatus();
 }
