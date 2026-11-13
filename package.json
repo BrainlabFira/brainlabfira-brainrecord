@@ -26,8 +26,8 @@
     "devDependencies": {
         "@types/fluent-ffmpeg": "^2.1.27",
         "@types/node": "^20.0.0",
-        "electron": "^33.4.11",
-        "electron-builder": "^25.0.0",
+        "electron": "^42.11.16",
+        "electron-builder": "^26.18.0",
         "minio": "^8.0.7",
         "typescript": "^5.5.0"
     }
